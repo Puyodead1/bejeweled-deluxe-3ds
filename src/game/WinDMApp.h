@@ -3,13 +3,8 @@
 
 #include <list>
 #include "SexyAppFramework/SexyApp.h"
-#if BEJEWELED_VERSION >= 1870
 #include "SexyAppFramework/Rect.h"
-#endif
 #include "SexyAppFramework/DDImage.h"
-#if BEJEWELED_VERSION < 1870
-
-#endif
 namespace Sexy
 {
 
@@ -21,9 +16,6 @@ class ImageFont;
 class ButtonWidget;
 class TitleScreen;
 class HighScoreWidget;
-#if BEJEWELED_VERSION < 1870
-class Rect;
-#endif
 
 // The Bejeweled Deluxe application class (RTTI .?AVWinDMApp@Sexy@@), size 0x738.
 // One global instance at 0x4f6548, driven from WinMain.
@@ -51,13 +43,9 @@ public:
 	virtual bool OpenURL(const std::string& theURL, bool shutdownOnOpen); // vtable+0x64
 	virtual std::string GetGameSEHInfo(); // vtable+0x7c
 	virtual void Shutdown();          // vtable+0x80
-#if BEJEWELED_VERSION >= 1870
 	// 1.87 moved this into PreDisplayHook and leaves SexyApp::InitPropertiesHook alone, which loads the
 	// signed properties\partner.xml (NoReg, ProdName, ...). Overriding InitPropertiesHook here makes it a trial.
 	virtual void PreDisplayHook();     // vtable+0x68
-#else
-	virtual void InitPropertiesHook(); // vtable+0x90
-#endif
 	virtual void SetMusicVolume(double theVolume); // vtable+0xb4
 	virtual bool KillDialog(int theDialogId); // vtable+0xe0
 	virtual void ModalOpen();        // vtable+0xe8 (same code as 0xf4, folded by the linker)
@@ -89,11 +77,6 @@ public:
 	ButtonWidget* MakeButton(int theId, const Rect& theRect, int theOverImage, int theDownImage);
 	void FinishLoading();
 
-#if BEJEWELED_VERSION < 1870
-	int mMaxTime;                     // 0x5e0  property "MaxTime"; > 0 selects m_unk0x5e8 / 6000 in Shutdown
-	int m_unk0x5e4;                   // 0x5e4
-	int m_unk0x5e8;                   // 0x5e8
-#endif
 	// 0x5ec-0x648: difficulty settings read from data\diff.txt
 	int m_unk0x5ec;                   // 0x5ec
 	double m_unk0x5f0;                // 0x5f0

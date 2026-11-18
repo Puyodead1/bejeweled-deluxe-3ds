@@ -35,7 +35,7 @@ http://www.math.sci.hiroshima-u.ac.jp/~m-mat/MT/emt.html
 email: m-mat @ math.sci.hiroshima-u.ac.jp (remove space)
 */
 
-#include <windows.h> 
+#include "win32compat.h"
 #include "MTRand.h"
 #include "Debug.h"
 #include <stdio.h>
@@ -63,7 +63,7 @@ MTRand::MTRand(const std::string& theSerialData)
 	mti=MTRAND_N+1; /* mti==MTRAND_N+1 means mt[MTRAND_N] is not initialized */
 }
 
-MTRand::MTRand(unsigned long seed)    
+MTRand::MTRand(uint32_t seed)    
 {
 	SRand(seed);
 }
@@ -99,7 +99,7 @@ void MTRand::SRand(const std::string& theSerialData)
 }
 
 // FUNCTION: GAME187 0x4646b0
-void MTRand::SRand(unsigned long seed)
+void MTRand::SRand(uint32_t seed)
 {
 	if (seed == 0)
 		seed = 4357;
@@ -123,17 +123,17 @@ void MTRand::SRand(unsigned long seed)
 }
 
 // FUNCTION: GAME187 0x464710
-unsigned long MTRand::Next()
+uint32_t MTRand::Next()
 {
 	DBG_ASSERT(gRandAllowed==0);
 	return NextNoAssert();
 }
 
 // FUNCTION: GAME187 0x464720
-unsigned long MTRand::NextNoAssert()
+uint32_t MTRand::NextNoAssert()
 {
-    unsigned long y;
-    static unsigned long mag01[2]={0x0, MATRIX_A};
+    uint32_t y;
+    static uint32_t mag01[2]={0x0, MATRIX_A};
     /* mag01[x] = x * MATRIX_A  for x=0,1 */
 
 	if (mti >= MTRAND_N) { /* generate MTRAND_N words at one time */
@@ -168,12 +168,12 @@ unsigned long MTRand::NextNoAssert()
     return y; 
 }
 
-unsigned long MTRand::NextNoAssert(unsigned long range)
+uint32_t MTRand::NextNoAssert(uint32_t range)
 {
 	return NextNoAssert() % range;
 }
 
-unsigned long MTRand::Next(unsigned long range)
+uint32_t MTRand::Next(uint32_t range)
 {
 	DBG_ASSERT(gRandAllowed==0);
 	return NextNoAssert( range );

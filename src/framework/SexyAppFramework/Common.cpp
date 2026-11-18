@@ -1,16 +1,14 @@
 #include "Common.h"
 #include "MTRand.h"
 #include "Debug.h"
-#include <direct.h>
-#include <io.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <errno.h>
-#include <aclapi.h>
+#include <dirent.h>
+#include <unistd.h>
 
 #include "PerfTimer.h"
 
-HINSTANCE Sexy::gHInstance;
 bool Sexy::gDebug = false;
 static Sexy::MTRand gMTRand;
 namespace Sexy
@@ -26,7 +24,7 @@ int Sexy::Rand()
 
 int Sexy::Rand(int range)
 {
-	return gMTRand.Next((unsigned long)range);
+	return gMTRand.Next((uint32_t)range);
 }
 
 float Sexy::Rand(float range)
@@ -35,7 +33,7 @@ float Sexy::Rand(float range)
 }
 
 // FUNCTION: GAME187 0x469270
-void Sexy::SRand(ulong theSeed)
+void Sexy::SRand(uint32_t theSeed)
 {
 	gMTRand.SRand(theSeed);
 }
@@ -43,55 +41,14 @@ void Sexy::SRand(ulong theSeed)
 // FUNCTION: GAME187 0x469280
 bool Sexy::CheckFor98Mill()
 {
-	static bool needOsCheck = true;
-	static bool is98Mill = false;
-
-	if (needOsCheck)
-	{
-		bool invalid = false;
-		OSVERSIONINFOEXA osvi;
-		ZeroMemory(&osvi, sizeof(OSVERSIONINFOEXA));
-
-		osvi.dwOSVersionInfoSize = sizeof(OSVERSIONINFOEXA);
-		if( GetVersionExA((LPOSVERSIONINFOA)&osvi) == 0)
-		{
-			osvi.dwOSVersionInfoSize = sizeof (OSVERSIONINFOA);
-			if ( GetVersionExA((LPOSVERSIONINFOA)&osvi) == 0)
-				return false;
-		}
-
-		needOsCheck = false;
-		is98Mill = osvi.dwPlatformId == VER_PLATFORM_WIN32_WINDOWS; // let's check Win95, 98, *AND* ME.
-	}
-
-	return is98Mill;
+	return false;
 }
 
 // FUNCTION: GAME187 0x469330
 bool Sexy::CheckForVista()
 {
-	static bool needOsCheck = true;
-	static bool isVista = false;
-
-	if (needOsCheck)
-	{
-		bool invalid = false;
-		OSVERSIONINFOEXA osvi;
-		ZeroMemory(&osvi, sizeof(OSVERSIONINFOEXA));
-
-		osvi.dwOSVersionInfoSize = sizeof(OSVERSIONINFOEXA);
-		if( GetVersionExA((LPOSVERSIONINFOA)&osvi) == 0)
-		{
-			osvi.dwOSVersionInfoSize = sizeof (OSVERSIONINFOA);
-			if ( GetVersionExA((LPOSVERSIONINFOA)&osvi) == 0)
-				return false;
-		}
-
-		needOsCheck = false;
-		isVista = osvi.dwMajorVersion >= 6;
-	}
-
-	return isVista;
+	// "Vista" turns on the per-user data folder (SetAppDataFolder), which is what the Switch wants too.
+	return true;
 }
 
 // FUNCTION: GAME187 0x4693e0
@@ -539,7 +496,9 @@ SexyString Sexy::CommaSeperate(int theValue)
 std::string Sexy::GetCurDir()
 {
 	char aDir[256];
-	return _getcwd(aDir, sizeof(aDir));
+	if (getcwd(aDir, sizeof(aDir)) == NULL)
+		return "";
+	return aDir;
 }
 
 // FUNCTION: GAME187 0x46a1c0
@@ -650,89 +609,7 @@ std::string Sexy::GetPathFrom(const std::string& theRelPath, const std::string& 
 // FUNCTION: GAME187 0x46aca0
 bool Sexy::AllowAllAccess(const std::string& theFileName)
 {
-	HMODULE aLib = LoadLibraryA("advapi32.dll");
-	if (aLib == NULL)
-		return false;
-
-	BOOL (WINAPI *fnSetFileSecurity)(LPCTSTR lpFileName, SECURITY_INFORMATION SecurityInformation, PSECURITY_DESCRIPTOR pSecurityDescriptor);
-	BOOL (WINAPI *fnSetSecurityDescriptorDacl)(PSECURITY_DESCRIPTOR pSecurityDescriptor, BOOL bDaclPresent, PACL pDacl, BOOL bDaclDefaulted);
-	BOOL (WINAPI *fnInitializeSecurityDescriptor)(PSECURITY_DESCRIPTOR pSecurityDescriptor, DWORD dwRevision);
-	BOOL (WINAPI *fnAllocateAndInitializeSid)(
-	  PSID_IDENTIFIER_AUTHORITY pIdentifierAuthority,
-	  BYTE nSubAuthorityCount,
-	  DWORD dwSubAuthority0,
-	  DWORD dwSubAuthority1,
-	  DWORD dwSubAuthority2,
-	  DWORD dwSubAuthority3,
-	  DWORD dwSubAuthority4,
-	  DWORD dwSubAuthority5,
-	  DWORD dwSubAuthority6,
-	  DWORD dwSubAuthority7,
-	  PSID* pSid
-	);
-	DWORD (WINAPI *fnSetEntriesInAcl)(ULONG cCountOfExplicitEntries, PEXPLICIT_ACCESS pListOfExplicitEntries, PACL OldAcl, PACL* NewAcl);
-	PVOID (WINAPI *fnFreeSid)(PSID pSid);
-
-	*(void**)&fnSetFileSecurity = (void*)GetProcAddress(aLib, "SetFileSecurityA");
-	*(void**)&fnSetSecurityDescriptorDacl = (void*)GetProcAddress(aLib, "SetSecurityDescriptorDacl");
-	*(void**)&fnInitializeSecurityDescriptor = (void*)GetProcAddress(aLib, "InitializeSecurityDescriptor");
-	*(void**)&fnAllocateAndInitializeSid = (void*)GetProcAddress(aLib, "AllocateAndInitializeSid");
-	*(void**)&fnSetEntriesInAcl = (void*)GetProcAddress(aLib, "SetEntriesInAclA");
-	*(void**)&fnFreeSid = (void*) GetProcAddress(aLib, "FreeSid");
-
-	if (!(fnSetFileSecurity && fnSetSecurityDescriptorDacl && fnInitializeSecurityDescriptor && fnAllocateAndInitializeSid && fnSetEntriesInAcl && fnFreeSid))
-	{
-		FreeLibrary(aLib);
-		return false;
-	}
-
-
-	PSID pEveryoneSID = NULL;
-	SID_IDENTIFIER_AUTHORITY SIDAuthWorld = SECURITY_WORLD_SID_AUTHORITY;
-	bool result = false;
-
-    // Create a well-known SID for the Everyone group.
-    if (fnAllocateAndInitializeSid(&SIDAuthWorld, 1,
-                     SECURITY_WORLD_RID,
-                     0, 0, 0, 0, 0, 0, 0,
-                     &pEveryoneSID))
-    {
-		EXPLICIT_ACCESS ea;
-
-		// Initialize an EXPLICIT_ACCESS structure for an ACE.
-		// The ACE will allow Everyone read access to the key.
-		ZeroMemory(&ea, sizeof(EXPLICIT_ACCESS));
-		ea.grfAccessPermissions = STANDARD_RIGHTS_ALL | SPECIFIC_RIGHTS_ALL;
-		ea.grfAccessMode = SET_ACCESS;
-		ea.grfInheritance = SUB_CONTAINERS_AND_OBJECTS_INHERIT;
-		ea.Trustee.TrusteeForm = TRUSTEE_IS_SID;
-		ea.Trustee.TrusteeType = TRUSTEE_IS_WELL_KNOWN_GROUP;
-		ea.Trustee.ptstrName = (LPTSTR) pEveryoneSID;
-
-		// Create a new ACL that contains the new ACEs.
-		PACL pACL = NULL; 
-		if (fnSetEntriesInAcl(1, &ea, NULL, &pACL) == ERROR_SUCCESS)
-		{		
-			// Initialize a security descriptor.  
-			PSECURITY_DESCRIPTOR pSD = (PSECURITY_DESCRIPTOR) new char[SECURITY_DESCRIPTOR_MIN_LENGTH]; 
-						 
-			if (fnInitializeSecurityDescriptor(pSD, SECURITY_DESCRIPTOR_REVISION)) 
-			{  							 
-				// Add the ACL to the security descriptor. 
-				if (fnSetSecurityDescriptorDacl(pSD, 
-						TRUE,     // bDaclPresent flag   
-						pACL, 
-						FALSE))   // not a default DACL 
-				{
-					if (fnSetFileSecurity(theFileName.c_str(), DACL_SECURITY_INFORMATION, pSD))
-						result = true;
-				}
-			}
-		}
-	}
-
-	FreeLibrary(aLib);
-	return result;
+	return true;
 }
 
 // FUNCTION: GAME187 0x46ae90
@@ -740,44 +617,32 @@ bool Sexy::Deltree(const std::string& thePath)
 {
 	bool success = true;
 
-	std::string aSourceDir = thePath;
-	
+	std::string aSourceDir = RemoveTrailingSlash(thePath);
 	if (aSourceDir.length() < 2)
 		return false;
 
-	if ((aSourceDir[aSourceDir.length() - 1] != '\\') ||
-		(aSourceDir[aSourceDir.length() - 1] != '/'))
-		aSourceDir += "\\";		
-	
-	WIN32_FIND_DATAA aFindData;
-
-	HANDLE aFindHandle = FindFirstFileA((aSourceDir + "*.*").c_str(), &aFindData); 
-	if (aFindHandle == INVALID_HANDLE_VALUE)
+	DIR* aDir = opendir(aSourceDir.c_str());
+	if (aDir == NULL)
 		return false;
-	
-	do
-	{		
-		if ((aFindData.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0)
+
+	while (struct dirent* anEntry = readdir(aDir))
+	{
+		if (strcmp(anEntry->d_name, ".") == 0 || strcmp(anEntry->d_name, "..") == 0)
+			continue;
+
+		std::string aFullName = aSourceDir + "/" + anEntry->d_name;
+		struct stat aStat;
+		if (stat(aFullName.c_str(), &aStat) == 0 && S_ISDIR(aStat.st_mode))
 		{
-			if ((strcmp(aFindData.cFileName, ".") != 0) &&
-				(strcmp(aFindData.cFileName, "..") != 0))
-			{
-				// Follow the directory
-				if (!Deltree(aSourceDir + aFindData.cFileName))
-					success = false;
-			}
-		}
-		else
-		{	
-			std::string aFullName = aSourceDir + aFindData.cFileName;
-			if (!DeleteFileA(aFullName.c_str()))
+			if (!Deltree(aFullName))
 				success = false;
 		}
+		else if (unlink(aFullName.c_str()) != 0)
+			success = false;
 	}
-	while (FindNextFileA(aFindHandle, &aFindData));
-	FindClose(aFindHandle);
+	closedir(aDir);
 
-	if (rmdir(thePath.c_str()) == 0)
+	if (rmdir(aSourceDir.c_str()) != 0)
 		success = false;
 
 	return success;
@@ -785,14 +650,8 @@ bool Sexy::Deltree(const std::string& thePath)
 
 bool Sexy::FileExists(const std::string& theFileName)
 {
-	WIN32_FIND_DATAA aFindData;
-	
-	HANDLE aFindHandle = FindFirstFileA(theFileName.c_str(), &aFindData); 
-	if (aFindHandle == INVALID_HANDLE_VALUE)
-		return false;
-
-	FindClose(aFindHandle);
-	return true;
+	struct stat aStat;
+	return stat(theFileName.c_str(), &aStat) == 0;
 }
 
 // FUNCTION: GAME187 0x46b1c0
@@ -806,14 +665,16 @@ void Sexy::MkDir(const std::string& theDir)
 		int aSlashPos = aPath.find_first_of("\\/", aCurPos);
 		if (aSlashPos == -1)
 		{
-			_mkdir(aPath.c_str());
+			mkdir(aPath.c_str(), 0777);
 			break;
 		}
 
 		aCurPos = aSlashPos+1;
 
 		std::string aCurPath = aPath.substr(0, aSlashPos);
-		_mkdir(aCurPath.c_str());
+		// Skip device roots like "sdmc:".
+		if (!aCurPath.empty() && aCurPath[aCurPath.length() - 1] != ':')
+			mkdir(aCurPath.c_str(), 0777);
 	}
 }
 
@@ -880,25 +741,10 @@ std::string	Sexy::AddTrailingSlash(const std::string& theDirectory, bool backSla
 
 time_t Sexy::GetFileDate(const std::string& theFileName)
 {
-	time_t aFileDate = 0;
-
-	WIN32_FIND_DATAA aFindData;
-	HANDLE aFindHandle = ::FindFirstFileA(theFileName.c_str(), &aFindData);
-
-	if (aFindHandle != INVALID_HANDLE_VALUE)
-	{		
-		FILETIME aFileTime = aFindData.ftLastWriteTime;
-						
-		//FileTimeToUnixTime(&aFileTime, &aFileDate, FALSE);
-
-		LONGLONG ll = (__int64) aFileTime.dwHighDateTime << 32;
-		ll = ll + aFileTime.dwLowDateTime - 116444736000000000;
-		aFileDate = (time_t) (ll/10000000);
-
-		FindClose(aFindHandle);
-	}
-
-	return aFileDate;
+	struct stat aStat;
+	if (stat(theFileName.c_str(), &aStat) != 0)
+		return 0;
+	return aStat.st_mtime;
 }
 
 // FUNCTION: GAME187 0x46b550
@@ -1076,7 +922,7 @@ std::string Sexy::XMLDecodeString(const std::string& theString)
 	int aUTF8Len = 0;
 	int aUTF8CurVal = 0;
 
-	for (ulong i = 0; i < theString.length(); i++)
+	for (uint32_t i = 0; i < theString.length(); i++)
 	{
 		char c = theString[i];
 
@@ -1120,7 +966,7 @@ std::wstring Sexy::XMLDecodeString(const std::wstring& theString)
 	int aUTF8Len = 0;
 	int aUTF8CurVal = 0;
 
-	for (ulong i = 0; i < theString.length(); i++)
+	for (uint32_t i = 0; i < theString.length(); i++)
 	{
 		wchar_t c = theString[i];
 
@@ -1163,7 +1009,7 @@ std::string Sexy::XMLEncodeString(const std::string& theString)
 
 	bool hasSpace = false;
 
-	for (ulong i = 0; i < theString.length(); i++)
+	for (uint32_t i = 0; i < theString.length(); i++)
 	{
 		char c = theString[i];
 
@@ -1224,7 +1070,7 @@ std::wstring Sexy::XMLEncodeString(const std::wstring& theString)
 
 	bool hasSpace = false;
 
-	for (ulong i = 0; i < theString.length(); i++)
+	for (uint32_t i = 0; i < theString.length(); i++)
 	{
 		wchar_t c = theString[i];
 

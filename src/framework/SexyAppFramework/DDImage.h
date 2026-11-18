@@ -2,7 +2,6 @@
 #define __DDIMAGE_H__
 
 #include "MemoryImage.h"
-#include <ddraw.h>
 
 namespace Sexy
 {
@@ -10,89 +9,59 @@ namespace Sexy
 class DDInterface;
 class SysFont;
 
+// Texture hints from D3DInterface.h; ResourceManager still sets them, nothing reads them.
+enum D3DImageFlags
+{
+	D3DImageFlag_MinimizeNumSubdivisions = 0x0001,
+	D3DImageFlag_Use64By64Subdivisions = 0x0002,
+	D3DImageFlag_UseA4R4G4B4 = 0x0004,
+	D3DImageFlag_UseA8R8G8B8 = 0x0008
+};
+
+// Switch port: DDImage no longer has a DirectDraw surface. It is a MemoryImage that registers with the DDInterface;
+// all drawing goes through MemoryImage's software blitters. The surface-related members stay so the framework and
+// game code that sets them compiles unchanged; mSurface is always NULL.
 // VTABLE: GAME187 0x50cabc
 class DDImage : public MemoryImage
 {
 protected:
 	friend class			SysFont;
-	void					DeleteAllNonSurfaceData();
 
 public:
 	DDInterface*			mDDInterface;
-	LPDIRECTDRAWSURFACE		mSurface;
+	void*					mSurface;
 	bool					mSurfaceSet;
 	bool					mNoLock;
 	bool					mVideoMemory;
 	bool					mFirstPixelTrans;
-	bool					mWantDDSurface;	
+	bool					mWantDDSurface;
 	bool					mDrawToBits;
-	
+
 	int						mLockCount;
-	DDSURFACEDESC			mLockedSurfaceDesc;
-	
+
 private:
 	void					Init();
 
-public:	
-	bool					GenerateDDSurface();
-	void					DeleteDDSurface();	
-	virtual void			ReInit();
-	virtual void			SetVideoMemory(bool wantVideoMemory);
-	virtual void			RehupFirstPixelTrans();
+public:
+	bool					GenerateDDSurface() { return false; }
+	void					DeleteDDSurface() { }
+	virtual void			SetVideoMemory(bool wantVideoMemory) { mVideoMemory = wantVideoMemory; }
+	virtual void			RehupFirstPixelTrans() { }
 
-	LPDIRECTDRAWSURFACE		GetSurface();	
-	virtual void			BitsChanged();
-	virtual void			CommitBits();	
+	void*					GetSurface() { return NULL; }
 
-	virtual void			NormalFillRect(const Rect& theRect, const Color& theColor);
-	virtual void			AdditiveFillRect(const Rect& theRect, const Color& theColor);
-	virtual void			NormalBlt(Image* theImage, int theX, int theY, const Rect& theSrcRect, const Color& theColor);
-	virtual void			AdditiveBlt(Image* theImage, int theX, int theY, const Rect& theSrcRect, const Color& theColor);
-	virtual void			NormalDrawLine(double theStartX, double theStartY, double theEndX, double theEndY, const Color& theColor);
-	virtual void			AdditiveDrawLine(double theStartX, double theStartY, double theEndX, double theEndY, const Color& theColor);
-	virtual void			NormalDrawLineAA(double theStartX, double theStartY, double theEndX, double theEndY, const Color& theColor);
-	virtual void			AdditiveDrawLineAA(double theStartX, double theStartY, double theEndX, double theEndY, const Color& theColor);
-
-
-	virtual void			NormalBltMirror(Image* theImage, int theX, int theY, const Rect& theSrcRect, const Color& theColor);
-	virtual void			AdditiveBltMirror(Image* theImage, int theX, int theY, const Rect& theSrcRect, const Color& theColor);
-
-	virtual void			FillScanLinesWithCoverage(Span* theSpans, int theSpanCount, const Color& theColor, int theDrawMode, const BYTE* theCoverage, int theCoverX, int theCoverY, int theCoverWidth, int theCoverHeight);
-
-	static bool				Check3D(DDImage *theImage);
-	static bool				Check3D(Image *theImage);
+	static bool				Check3D(DDImage *theImage) { return false; }
+	static bool				Check3D(Image *theImage) { return false; }
 
 public:
 	DDImage();
-	DDImage(DDInterface* theDDInterface);	
-	virtual ~DDImage();		
+	DDImage(DDInterface* theDDInterface);
+	virtual ~DDImage();
 
-	virtual bool			LockSurface();
-	virtual bool			UnlockSurface();
+	virtual bool			LockSurface() { return false; }
+	virtual bool			UnlockSurface() { return false; }
 
-	virtual void			SetSurface(LPDIRECTDRAWSURFACE theSurface);
-
-	virtual void			Create(int theWidth, int theHeight);
-	virtual ulong*			GetBits();
-	
-	virtual bool			PolyFill3D(const Point theVertices[], int theNumVertices, const Rect *theClipRect, const Color &theColor, int theDrawMode, int tx, int ty, bool comvex);
-	virtual void			FillRect(const Rect& theRect, const Color& theColor, int theDrawMode);
-	virtual void			DrawLine(double theStartX, double theStartY, double theEndX, double theEndY, const Color& theColor, int theDrawMode);
-	virtual void			DrawLineAA(double theStartX, double theStartY, double theEndX, double theEndY, const Color& theColor, int theDrawMode);
-	virtual void			Blt(Image* theImage, int theX, int theY, const Rect& theSrcRect, const Color& theColor, int theDrawMode);
-	virtual void			BltF(Image* theImage, float theX, float theY, const Rect& theSrcRect, const Rect &theClipRect, const Color& theColor, int theDrawMode);
-	virtual void			BltRotated(Image* theImage, float theX, float theY, const Rect &theSrcRect, const Rect& theClipRect, const Color& theColor, int theDrawMode, double theRot, float theRotCenterX, float theRotCenterY);
-	virtual void			StretchBlt(Image* theImage, const Rect& theDestRect, const Rect& theSrcRect, const Rect& theClipRect, const Color& theColor, int theDrawMode, bool fastStretch);
-	virtual void			BltMatrix(Image* theImage, float x, float y, const SexyMatrix3 &theMatrix, const Rect& theClipRect, const Color& theColor, int theDrawMode, const Rect &theSrcRect, bool blend);
-	virtual void			BltTrianglesTex(Image *theTexture, const TriVertex theVertices[][3], int theNumTriangles, const Rect& theClipRect, const Color &theColor, int theDrawMode, float tx, float ty, bool blend);
-
-	virtual void			BltMirror(Image* theImage, int theX, int theY, const Rect& theSrcRect, const Color& theColor, int theDrawMode);
-	virtual void			StretchBltMirror(Image* theImage, const Rect& theDestRectOrig, const Rect& theSrcRect, const Rect& theClipRect, const Color& theColor, int theDrawMode, bool fastStretch);
-
-	virtual bool			Palletize();	
 	virtual void			PurgeBits();
-	virtual void			DeleteNativeData();
-	virtual void			DeleteExtraBuffers();	
 };
 
 }

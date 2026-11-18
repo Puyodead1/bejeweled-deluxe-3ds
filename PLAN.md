@@ -58,6 +58,12 @@ one: either rename/drop the vendored copy and use 1.3.1 (libpng 1.0.5 only uses 
    chasing it.
 2. **Compile the framework and game with gcc/aarch64.** Delete the Windows-only files, add `platform/switch/win32compat.h`
    for the remaining types, fix 64-bit and MSVC-isms, build third_party, stub what isn't ported yet. Goal: links.
+   Done: `bejeweled.nro` links and boots in Eden without crashing (black screen so far). Along the way SexyAppBase
+   moved onto SDL already: one fullscreen `SDL_Window`, SDL events turned into the same `WM_*` messages the deferred
+   queue always handled (so demo recording still works), a file-backed registry (`SwitchRegistry`,
+   `sdmc:/switch/Bejeweled/registry.dat`), pthreads for the loading thread, a silent `NullSoundManager`, the error
+   applet for `Popup`. InternetManager/BetaSupport/update checks are gone. The log goes to
+   `sdmc:/switch/Bejeweled/bejeweled.log` (or to `nxlink -s` in debug builds).
 3. **Platform layer: video + input + main loop.** `DDInterface`/`DDImage` on SDL2, SexyAppBase's loop on SDL events,
    touch/controller → mouse/keys, file layer on RomFS. Goal: title screen, then a full game, in Eden.
 4. **Audio.** SoundManager/SoundInstance mixer and the libmodplug MusicInterface with fades.

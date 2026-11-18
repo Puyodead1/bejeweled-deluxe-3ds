@@ -3,63 +3,20 @@
 
 using namespace Sexy;
 
-///////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////
-inline int QueryCounters(__int64 *lpPerformanceCount)
+// The x86 version read rdtsc and calibrated it against QueryPerformanceCounter. Here the "cycle counter" is the
+// nanosecond clock, so its rate is exactly 1 GHz.
+static inline int QueryCounters(__int64* lpPerformanceCount)
 {
-	/* returns TSC only */
-	_asm
-	{
-		mov ebx, dword ptr [lpPerformanceCount]
-		rdtsc
-			mov dword ptr [ebx], eax
-			mov dword ptr [ebx+4], edx
-	}
+	LARGE_INTEGER aCount;
+	QueryPerformanceCounter(&aCount);
+	*lpPerformanceCount = aCount.QuadPart;
 	return 1;
 }
 
-///////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////
-inline int DeltaCounters(__int64 *lpPerformanceCount)
-{
-	_asm
-	{
-		mov ebx, dword ptr [lpPerformanceCount]
-		rdtsc
-			sub eax, dword ptr [ebx]
-			sbb edx, dword ptr [ebx+4]
-			mov dword ptr [ebx],   eax
-				mov dword ptr [ebx+4], edx
-	}
-	return 1;
-}
-
-///////////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////////
-// FUNCTION: GAME187 0x463f50
 static __int64 CalcCPUSpeed()
 {
-	int aPriority = GetThreadPriority(GetCurrentThread());
-	SetThreadPriority(GetCurrentThread(),THREAD_PRIORITY_HIGHEST);
-	LARGE_INTEGER	goal, current, period;
-	__int64 Ticks;
-
-	if( !QueryPerformanceFrequency( &period ) ) return 0;
-
-	QueryPerformanceCounter(&goal);
-	goal.QuadPart+=period.QuadPart/100;
-	QueryCounters( &Ticks );
-	do
-	{
-		QueryPerformanceCounter(&current);
-	} while(current.QuadPart<goal.QuadPart);
-	DeltaCounters( &Ticks );
-
-	SetThreadPriority(GetCurrentThread(),aPriority);
-	return( Ticks * 100 );		// Hz
-
+	return 1000000000LL; // Hz
 }
-
 static __int64 gCPUSpeed = 0;
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -228,7 +185,7 @@ static inline void CollatePerfRecords()
 
 ///////////////////////////////////////////////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
-static inline void PushPerfRecord(PerfRecord &theRecord)
+static inline void PushPerfRecord(const PerfRecord &theRecord)
 {
 	if(gPerfRecordTop >= (int)gPerfRecordVector.size())
 		gPerfRecordVector.push_back(theRecord);

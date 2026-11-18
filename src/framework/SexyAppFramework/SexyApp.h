@@ -10,18 +10,11 @@
 namespace Sexy
 {
 
-class InternetManager;
-class BetaSupport;
-
 // VTABLE: GAME187 0x51e52c Sexy::ButtonListener
 // VTABLE: GAME187 0x51e6cc Sexy::DialogListener
-// SIZE 0x724
 class SexyApp : public SexyAppBase
 {
 public:
-	InternetManager*		mInternetManager;		// 0x638
-	BetaSupport*			mBetaSupport;			// 0x63c
-
 	std::string				mReferId;				// 0x640
 	std::string				mVariation;				// 0x65c
 	DWORD					mDownloadId;			// 0x678

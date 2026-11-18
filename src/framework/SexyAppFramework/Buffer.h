@@ -56,7 +56,7 @@ public:
 	const uchar*			GetDataPtr() const;
 	int						GetDataLen() const;	
 	int						GetDataLenBits() const;
-	ulong					GetCRC32(ulong theSeed = 0) const;
+	uint32_t					GetCRC32(uint32_t theSeed = 0) const;
 
 	bool					AtEnd() const;
 	bool					PastEnd() const;

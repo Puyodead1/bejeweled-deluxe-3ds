@@ -43,7 +43,7 @@ public:
 	RefCount(const RefCount&) : mRefCount(0) {}
 	RefCount& operator=(const RefCount&) { return *this; }
 
-	unsigned long GetRefCount() { return mRefCount; }	
+	uint32_t GetRefCount() { return mRefCount; }	
 };
 
 ///////////////////////////////////////////////////////////////////////////////

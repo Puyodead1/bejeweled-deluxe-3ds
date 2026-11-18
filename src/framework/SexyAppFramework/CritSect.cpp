@@ -1,7 +1,7 @@
 #pragma warning( disable : 4786 )
 
 #include "CritSect.h"
-#include <windows.h>
+#include "win32compat.h"
 
 using namespace Sexy;
 

@@ -3,7 +3,6 @@
 #include "XMLParser.h"
 #include "SoundManager.h"
 #include "DDImage.h"
-#include "D3DInterface.h"
 #include "ImageFont.h"
 #include "SysFont.h"
 #include "../ImageLib/ImageLib.h"
@@ -650,7 +649,7 @@ bool ResourceManager::LoadAlphaGridImage(ImageRes *theRes, DDImage *theImage)
 	if (anAlphaImage==NULL)
 		return Fail(StrFormat("Failed to load image: %s",theRes->mAlphaGridImage.c_str()));
 
-	std::auto_ptr<ImageLib::Image> aDelAlphaImage(anAlphaImage);
+	std::unique_ptr<ImageLib::Image> aDelAlphaImage(anAlphaImage);
 
 	int aNumRows = theRes->mRows;
 	int aNumCols = theRes->mCols;
@@ -662,17 +661,17 @@ bool ResourceManager::LoadAlphaGridImage(ImageRes *theRes, DDImage *theImage)
 	if (anAlphaImage->mWidth!=aCelWidth || anAlphaImage->mHeight!=aCelHeight)
 		return Fail(StrFormat("GridAlphaImage size mismatch between %s and %s",theRes->mPath.c_str(),theRes->mAlphaGridImage.c_str()));
 
-	unsigned long *aMasterRowPtr = theImage->mBits;
+	uint32_t *aMasterRowPtr = theImage->mBits;
 	for (int i=0; i < aNumRows; i++)
 	{
-		unsigned long *aMasterColPtr = aMasterRowPtr;
+		uint32_t *aMasterColPtr = aMasterRowPtr;
 		for (int j=0; j < aNumCols; j++)
 		{
-			unsigned long* aRowPtr = aMasterColPtr;
-			unsigned long* anAlphaBits = anAlphaImage->mBits;
+			uint32_t* aRowPtr = aMasterColPtr;
+			uint32_t* anAlphaBits = anAlphaImage->mBits;
 			for (int y=0; y<aCelHeight; y++)
 			{
-				unsigned long *aDestPtr = aRowPtr;
+				uint32_t *aDestPtr = aRowPtr;
 				for (int x=0; x<aCelWidth; x++)
 				{
 					*aDestPtr = (*aDestPtr & 0x00FFFFFF) | ((*anAlphaBits & 0xFF) << 24);
@@ -703,13 +702,13 @@ bool ResourceManager::LoadAlphaImage(ImageRes *theRes, DDImage *theImage)
 	if (anAlphaImage==NULL)
 		return Fail(StrFormat("Failed to load image: %s",theRes->mAlphaImage.c_str()));
 
-	std::auto_ptr<ImageLib::Image> aDelAlphaImage(anAlphaImage);
+	std::unique_ptr<ImageLib::Image> aDelAlphaImage(anAlphaImage);
 
 	if (anAlphaImage->mWidth!=theImage->mWidth || anAlphaImage->mHeight!=theImage->mHeight)
 		return Fail(StrFormat("AlphaImage size mismatch between %s and %s",theRes->mPath.c_str(),theRes->mAlphaImage.c_str()));
 
-	unsigned long* aBits1 = theImage->mBits;
-	unsigned long* aBits2 = anAlphaImage->mBits;
+	uint32_t* aBits1 = theImage->mBits;
+	uint32_t* aBits2 = anAlphaImage->mBits;
 	int aSize = theImage->mWidth*theImage->mHeight;
 
 	for (int i = 0; i < aSize; i++)

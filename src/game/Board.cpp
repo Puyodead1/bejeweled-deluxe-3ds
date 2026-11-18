@@ -65,11 +65,7 @@ void Board::EndGame(int theDelay)
 	mState = 5;
 	mGameTime = mElapsedTime + (mUpdateCnt - mStartTick) / 100;
 	m_unk0x1dc = theDelay;
-#if BEJEWELED_VERSION >= 1870
 	mApp->mTimesPlayed++;
-#else
-	mApp->m_unk0x5e4++;
-#endif
 }
 
 // FUNCTION: GAME 0x4010cf
@@ -370,8 +366,8 @@ void Board::SetMessage(const std::string& theText, int theDuration)
 // FUNCTION: GAME187 0x4ca36e
 void Board::UpdateMessageFx()
 {
-	unsigned long* aBits = mMessageImage->GetBits();
-	unsigned long* aFxBits = mMessageFxImage->GetBits();
+	uint32_t* aBits = mMessageImage->GetBits();
+	uint32_t* aFxBits = mMessageFxImage->GetBits();
 	int aWidth = mMessageImage->GetWidth();
 	int aHeight = mMessageImage->GetHeight();
 	int aFxHeight = mMessageFxImage->GetHeight();
@@ -384,7 +380,7 @@ void Board::UpdateMessageFx()
 	else if (mMessageDuration < 75)
 		anAlpha = 255 * mMessageDuration / 75;
 
-	unsigned long* aColors = new unsigned long[mMessageFxImage->GetHeight()];
+	uint32_t* aColors = new uint32_t[mMessageFxImage->GetHeight()];
 	int i;
 	for (i = 0; i < aFxHeight; i++)
 		aColors[i] = mApp->HSLToRGB((i * 4) % 256, 255, 148);
@@ -392,12 +388,12 @@ void Board::UpdateMessageFx()
 	for (i = 0; i < aWidth; i++)
 	{
 		int anOffset = (int)((sin(i * 0.024 + mMessagePhase) + 1.0) * 24.0);
-		unsigned long* aSrc = aBits + i;
-		unsigned long* aDest = aFxBits + anOffset * aWidth + i;
+		uint32_t* aSrc = aBits + i;
+		uint32_t* aDest = aFxBits + anOffset * aWidth + i;
 		for (int y = 0; y < aHeight; y++)
 		{
-			unsigned long aSrcColor = *aSrc;
-			unsigned long aColorizer = aColors[y + anOffset];
+			uint32_t aSrcColor = *aSrc;
+			uint32_t aColorizer = aColors[y + anOffset];
 			*aDest = ((((aSrcColor & 0xFF000000) >> 8) * anAlpha) & 0xFF000000) |
 				(((((aSrcColor & 0x00FF0000) * ((aColorizer >> 16) & 0xFF)) & 0xFF000000) |
 				(((aSrcColor & 0x0000FF00) * ((aColorizer >> 8) & 0xFF)) & 0x00FF0000) |
@@ -437,19 +433,10 @@ void Board::StartExplode()
 			Gem* aGem = mBoard[aRow][aCol];
 			if (aGem != NULL)
 			{
-#if BEJEWELED_VERSION >= 1870
 				float aDX = (int)(aGem->mX + 24.0 - aCenterX);
-#else
-				int aDX = (int)(aGem->mX + 24.0 - aCenterX);
-#endif
 				int aDY = (int)(aGem->mY + 24.0 - aCenterY);
-#if BEJEWELED_VERSION >= 1870
 				aGem->mAngle = atan2((float)aDY, aDX);
 				aGem->mDist = sqrt(aDX * aDX + aDY * aDY);
-#else
-				aGem->mAngle = atan2((double)aDY, (double)aDX);
-				aGem->mDist = sqrt((double)(aDX * aDX + aDY * aDY));
-#endif
 				aGem->m_unk0x68 = 0.0;
 			}
 		}
@@ -1039,11 +1026,7 @@ Board::Board(WinDMApp* theApp, bool timeTrial)
 // FUNCTION: GAME187 0x4cca37
 bool Board::HasSavedGame()
 {
-#if BEJEWELED_VERSION >= 1870
-	return mApp->FileExists(GetAppDataFolder() + "userdata\\savegame.dat");
-#else
-	return mApp->FileExists("savegame.dat");
-#endif
+	return mApp->FileExists(GetAppDataFolder() + "userdata/savegame.dat");
 }
 
 // FUNCTION: GAME 0x40322a
@@ -1051,11 +1034,7 @@ bool Board::HasSavedGame()
 bool Board::LoadGame()
 {
 	Buffer aBuffer;
-#if BEJEWELED_VERSION >= 1870
-	if (!mApp->ReadBufferFromFile(GetAppDataFolder() + "userdata\\savegame.dat", &aBuffer))
-#else
-	if (!mApp->ReadBufferFromFile("savegame.dat", &aBuffer))
-#endif
+	if (!mApp->ReadBufferFromFile(GetAppDataFolder() + "userdata/savegame.dat", &aBuffer))
 		return false;
 
 	int aVersion;
@@ -1185,23 +1164,15 @@ bool Board::SaveGame()
 	aBuffer.WriteBytes((uchar*)&m_unk0x2d8, 8);
 	aBuffer.WriteBytes((uchar*)&m_unk0x2e0, 1);
 
-#if BEJEWELED_VERSION >= 1870
 	MkDir(GetAppDataFolder() + "userdata");
-	return mApp->WriteBufferToFile(GetAppDataFolder() + "userdata\\savegame.dat", &aBuffer);
-#else
-	return mApp->WriteBufferToFile("savegame.dat", &aBuffer);
-#endif
+	return mApp->WriteBufferToFile(GetAppDataFolder() + "userdata/savegame.dat", &aBuffer);
 }
 
 // FUNCTION: GAME 0x40383e
 // FUNCTION: GAME187 0x4cd130
 bool Board::DeleteSavedGame()
 {
-#if BEJEWELED_VERSION >= 1870
-	return mApp->EraseFile(GetAppDataFolder() + "userdata\\savegame.dat");
-#else
-	return mApp->EraseFile("savegame.dat");
-#endif
+	return mApp->EraseFile(GetAppDataFolder() + "userdata/savegame.dat");
 }
 
 // FUNCTION: GAME 0x403888
@@ -1253,11 +1224,7 @@ void Board::UpdateLevelUp()
 
 				if (mUpdateCnt % 8 == 0)
 				{
-					#if BEJEWELED_VERSION >= 1870
 						int aFrame = (int)(6.0 - aGem->mDist * 6.0 / 96.0 - 1.0);
-#else
-						int aFrame = (int)(6.0 - aGem->mDist * 0.0625 - 1.0);
-#endif
 					if (aFrame >= 0)
 					{
 						if (!aGem->m_unk0x4c)
@@ -1528,11 +1495,7 @@ Board::~Board()
 	mApp->KillDialog(9);
 
 	if (CanPlay())
-#if BEJEWELED_VERSION >= 1870
 		mApp->mTimesPlayed++;
-#else
-		mApp->m_unk0x5e4++;
-#endif
 }
 
 // FUNCTION: GAME 0x404a1a
@@ -1852,11 +1815,7 @@ void Board::UpdateSwap()
 	}
 	else
 	{
-		#if BEJEWELED_VERSION >= 1870
 		double aCos = cos(mSwapPct * 3.14159 / 180.0);
-#else
-		double aCos = cos(mSwapPct * 0.01745327777777778);
-#endif
 		mSwapGem1->mX = (int)(mSwapGem1->mSwapOffsetX * aCos + mSwapCenterX);
 		mSwapGem1->mY = (int)(mSwapGem1->mSwapOffsetY * aCos + mSwapCenterY);
 		mSwapGem2->mX = (int)(mSwapGem2->mSwapOffsetX * aCos + mSwapCenterX);
@@ -1872,10 +1831,6 @@ void Board::Update()
 
 	if ((mPauseCount > 0) || (mUserPauseCount > 0))
 		return;
-#if BEJEWELED_VERSION < 1870
-
-	mApp->m_unk0x5e8++;
-#endif
 
 	if (mClickDelay > 0)
 		mClickDelay--;
@@ -2009,19 +1964,10 @@ void Board::Update()
 	if (mUpdateCnt == 150)
 	{
 		mApp->PlaySample(14);
-#if BEJEWELED_VERSION >= 1870
 		if (!mApp->m_unk0x735 || (mApp->mTimesPlayed >= 5))
 			SetMessage(mApp->GetString("GO"), 250);
-#else
-		SetMessage(mApp->GetString("GO"), 250);
-#endif
 
-#if BEJEWELED_VERSION >= 1870
 		if ((mUpdateCnt == 150) && (mApp->m_unk0x735) && (mApp->mTimesPlayed < 5))
-#else
-		if ((mUpdateCnt == 150) && (mApp->m_unk0x735) &&
-			((mApp->mTimesPlayed < 5) || ((mApp->mMaxTime > 0) && (mApp->mTimesPlayed < 45))))
-#endif
 		{
 			mApp->ShowInstructions();
 			mHintActive = true;

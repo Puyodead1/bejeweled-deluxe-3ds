@@ -71,16 +71,8 @@ void TitleScreen::Draw(Graphics* g)
 	static int aMaxExecutions = mApp->GetInteger("MaxExecutions", 0);
 
 	g->DrawImage(mApp->mImages[0], 0, 0);
-#if BEJEWELED_VERSION >= 1870
 	if (!mApp->mIsRegistered && !mApp->GetBoolean("Cobranded", false))
 		g->DrawImage(mApp->mImages[2], 31, 346);
-#else
-	if (!mApp->mIsRegistered)
-	{
-		if (!mApp->GetBoolean("Cobranded", false))
-			g->DrawImage(mApp->mImages[2], 31, 346);
-	}
-#endif
 
 	g->DrawImage(mApp->mImages[1], 143, aLoadingBarY, Rect(0, 0, (int)(mCurBarWidth * 340.0), mApp->mImages[1]->GetHeight()));
 
@@ -97,28 +89,12 @@ void TitleScreen::Draw(Graphics* g)
 			else
 				sprintf(aBuffer, mApp->GetString("YOU_MUST_REG2").c_str());
 		}
-#if BEJEWELED_VERSION < 1870
-		else if (mApp->mMaxTime > 0)
-		{
-			int aMinutesLeft = mApp->mMaxTime - mApp->mTimesPlayed;
-			if (aMinutesLeft == 1)
-				sprintf(aBuffer, "YOU HAVE %d MINUTE LEFT IN THIS TRIAL", aMinutesLeft);
-			else
-				sprintf(aBuffer, "YOU HAVE %d MINUTES LEFT IN THIS TRIAL", aMinutesLeft);
-		}
-#endif
 		else if (aMaxExecutions == 0)
 		{
-#if BEJEWELED_VERSION >= 1870
 			// 1.87 uses the plural string for both cases.
-#endif
 			int aPlaysLeft = aMaxPlays - mApp->mTimesPlayed;
 			if (aPlaysLeft == 1)
-#if BEJEWELED_VERSION >= 1870
 				sprintf(aBuffer, "YOU HAVE %d PLAYS REMAINING", aPlaysLeft);
-#else
-				sprintf(aBuffer, "YOU HAVE %d PLAY REMAINING", aPlaysLeft);
-#endif
 			else
 				sprintf(aBuffer, "YOU HAVE %d PLAYS REMAINING", aPlaysLeft);
 		}
@@ -160,14 +136,7 @@ void TitleScreen::Update()
 
 	Widget::Update();
 
-#if BEJEWELED_VERSION >= 1870
 	mDemoExpired = (mApp->mTimesPlayed >= aMaxPlays) && !mApp->mIsRegistered;
-#else
-	if (mApp->mMaxTime > 0)
-		mDemoExpired = (mApp->mTimesPlayed >= mApp->mMaxTime) && !mApp->mIsRegistered;
-	else
-		mDemoExpired = (mApp->mTimesPlayed >= aMaxPlays) && !mApp->mIsRegistered;
-#endif
 
 	if (aMaxExecutions > 0)
 		mDemoExpired = (mApp->mTimesExecuted > aMaxExecutions) && !mApp->mIsRegistered;
@@ -256,7 +225,6 @@ TitleScreen::TitleScreen(WinDMApp* theApp)
 {
 	mApp = theApp;
 
-#if BEJEWELED_VERSION >= 1870
 	int aPlays = mApp->mTimesPlayed;
 	if (aPlays <= 10)
 		mTotalTimerSec = 10;
@@ -264,57 +232,16 @@ TitleScreen::TitleScreen(WinDMApp* theApp)
 		mTotalTimerSec = aPlays;
 	else if (aPlays <= 50)
 		mTotalTimerSec = 2 * aPlays - 20;
-#else
-	if (mApp->mMaxTime == 0)
-	{
-		int aPlays = mApp->mTimesPlayed;
-		if (aPlays <= 10)
-			mTotalTimerSec = 10;
-		else if (aPlays <= 20)
-			mTotalTimerSec = aPlays;
-		else if (aPlays <= 50)
-			mTotalTimerSec = 2 * aPlays - 20;
-		else
-			mTotalTimerSec = 80;
-	}
-#endif
 	else
-#if BEJEWELED_VERSION >= 1870
 		mTotalTimerSec = 80;
 	mTotalTimerSec = mApp->GetInteger("TotalTimerSec", mTotalTimerSec);
-#else
-	{
-		mTotalTimerSec = 0;
-	}
-#endif
 
-#if BEJEWELED_VERSION >= 1870
 	if (mApp->mTimesPlayed < 2)
 		m_unk0x74 = 0;
 	else if (mApp->mTimesPlayed < 10)
 		m_unk0x74 = mApp->mTimesPlayed;
-#else
-	if (mApp->mMaxTime == 0)
-	{
-		if (mApp->mTimesPlayed >= 2)
-		{
-			if (mApp->mTimesPlayed < 10)
-				m_unk0x74 = mApp->mTimesPlayed;
-			else
-				m_unk0x74 = 2;
-		}
-		else
-			m_unk0x74 = 0;
-	}
-#endif
 	else
-#if BEJEWELED_VERSION >= 1870
 		m_unk0x74 = 2;
-#else
-		m_unk0x74 = mApp->mTimesPlayed;
-
-	mTotalTimerSec = mApp->GetInteger("TotalTimerSec", mTotalTimerSec);
-#endif
 
 	mRegisterLink = new HyperlinkWidget(0, this);
 	mRegisterLink->SetFont(mApp->m_unk0x690);

@@ -1,8 +1,4 @@
-#if BEJEWELED_VERSION >= 1870 || _MSC_VER > 1300
 #include <fstream>
-#else
-#include <fstream.h> // pre-standard iostreams, gone after VC 7.0
-#endif
 #include "WinDMApp.h"
 #include <stdio.h>
 #include "Board.h"
@@ -14,14 +10,11 @@
 #include "OptionsDialog.h"
 #include "HighScoreDialog.h"
 #include "RegisterDialog.h"
-#include "SexyAppFramework/UpdateCheckDialog.h"
-#include "SexyAppFramework/InternetManager.h"
-#if BEJEWELED_VERSION >= 1870
-#include "SexyAppFramework/MigrationManager.h"
 #include "SexyAppFramework/Common.h"
-#endif
 #include "SexyAppFramework/WidgetManager.h"
-#include "SexyAppFramework/BassMusicInterface.h"
+#include "SexyAppFramework/MusicInterface.h"
+#include "SwitchPlatform.h"
+#include "PakLib/PakInterface.h"
 #include "SexyAppFramework/ButtonWidget.h"
 #include "SexyAppFramework/Image.h"
 #include "SexyAppFramework/ImageFont.h"
@@ -58,14 +51,15 @@ WinDMApp gWinDMApp;
 
 // FUNCTION: GAME 0x40ba8c
 // FUNCTION: GAME187 0x4d43cc
-int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
+int main(int argc, char* argv[])
 {
-	gHInstance = hInstance;
+	SwitchPlatform::Init();
 
 	gWinDMApp.Init();
 	gWinDMApp.Start();
 	gWinDMApp.Shutdown();
 
+	SwitchPlatform::Exit();
 	return 0;
 }
 
@@ -75,13 +69,6 @@ void WinDMApp::Shutdown()
 {
 	if (!mShutdown)
 	{
-#if BEJEWELED_VERSION < 1870
-		if (mMaxTime > 0)
-			mTimesPlayed += m_unk0x5e8 / 6000;
-		else
-			mTimesPlayed += m_unk0x5e4;
-
-#endif
 		if (mBoard != NULL && mBoard->CanPlay())
 		{
 			mBoard->SaveGame();
@@ -170,7 +157,7 @@ bool WinDMApp::KillDialog(int theDialogId)
 // FUNCTION: GAME187 0x4d45b1
 MusicInterface* WinDMApp::CreateMusicInterface(HWND theHWnd)
 {
-	return new BassMusicInterface(theHWnd);
+	return SexyApp::CreateMusicInterface(theHWnd);
 }
 
 // FUNCTION: GAME 0x40bd4e
@@ -205,9 +192,7 @@ void WinDMApp::WriteToRegistry()
 void WinDMApp::ReadFromRegistry()
 {
 	SexyApp::ReadFromRegistry();
-#if BEJEWELED_VERSION >= 1870
 	mRegisterLink = "http://www.popcap.com/register.php?theGame=bejeweled&referid=" + mReferId;
-#endif
 	RegistryReadString("LastScoreName", &mLastScoreName);
 	RegistryReadBoolean("NoPopLink", &mNoPopLink);
 }
@@ -239,7 +224,6 @@ bool WinDMApp::OpenURL(const std::string& theURL, bool shutdownOnOpen)
 	return SexyApp::OpenURL(theURL, shutdownOnOpen);
 }
 
-#if BEJEWELED_VERSION >= 1870
 // FUNCTION: GAME187 0x4d6399
 void WinDMApp::PreDisplayHook()
 {
@@ -247,15 +231,6 @@ void WinDMApp::PreDisplayHook()
 	if (mIsDiamondMine)
 		mTitle = GetString("Title", "Diamond Mine") + " " + mProductVersion;
 }
-#else
-// FUNCTION: GAME 0x40ce37
-void WinDMApp::InitPropertiesHook()
-{
-	mIsDiamondMine = GetBoolean("IsDiamondMine", false);
-	if (mIsDiamondMine)
-		mTitle = GetString("Title", "Diamond Mine") + " " + mProductVersion;
-}
-#endif
 
 // FUNCTION: GAME 0x40bb37
 // FUNCTION: GAME187 0x4d4455
@@ -376,12 +351,7 @@ WinDMApp::~WinDMApp()
 				delete m_unk0x654[i][j];
 	}
 
-#if BEJEWELED_VERSION >= 1870
 	for (std::list<ButtonWidget*>::iterator anItr = m_unk0x678.begin(); anItr != m_unk0x678.end(); ++anItr)
-#else
-	std::list<ButtonWidget*>::iterator anItr;
-	for (anItr = m_unk0x678.begin(); anItr != m_unk0x678.end(); ++anItr)
-#endif
 	{
 		mWidgetManager->RemoveWidget(*anItr);
 		delete *anItr;
@@ -425,11 +395,6 @@ WinDMApp::~WinDMApp()
 // FUNCTION: GAME187 0x4d4d82
 WinDMApp::WinDMApp()
 {
-#if BEJEWELED_VERSION < 1870
-	m_unk0x5e8 = 0;
-	mMaxTime = 0;
-	m_unk0x5e4 = 0;
-#endif
 	m_unk0x735 = true;
 	mImages = NULL;
 	m_unk0x654 = NULL;
@@ -438,11 +403,7 @@ WinDMApp::WinDMApp()
 	mNoPopLink = false;
 
 	mProdName = "Bejeweled";
-#if BEJEWELED_VERSION >= 1870
 	mTitle = "Bejeweled Deluxe " + mProductVersion;
-#else
-	mTitle = "Bejeweled " + mProductVersion;
-#endif
 	mRegKey = "PopCap\\Bejeweled";
 
 	m_unk0x684 = NULL;
@@ -488,34 +449,12 @@ void WinDMApp::Init()
 {
 	SexyApp::Init();
 
-#if BEJEWELED_VERSION >= 1870
-	// 1.87: on Vista, saves and high scores live under the per-user data folder.
-	if (CheckForVista())
-	{
-		MkDir(GetAppDataFolder());
-		AllowAllAccess(GetAppDataFolder());
-
-		MigrationManager aMigrationManager;
-		aMigrationManager.AddFile("userdata");
-		aMigrationManager.DoMigration();
-	}
-
-#else
-	mMaxTime = GetInteger("MaxTime", 0);
-#endif
 	LoadProperties();
 
-#if BEJEWELED_VERSION >= 1870
 	DIALOG_YES_STRING = GetString("DIALOG_BUTTON_YES");
 	DIALOG_NO_STRING = GetString("DIALOG_BUTTON_NO");
 	DIALOG_OK_STRING = GetString("DIALOG_BUTTON_OK");
 	DIALOG_CANCEL_STRING = GetString("DIALOG_BUTTON_CANCEL");
-#else
-	Dialog::YES_BUTTON_TEXT = GetString("DIALOG_BUTTON_YES");
-	Dialog::NO_BUTTON_TEXT = GetString("DIALOG_BUTTON_NO");
-	Dialog::OK_BUTTON_TEXT = GetString("DIALOG_BUTTON_OK");
-	Dialog::CANCEL_BUTTON_TEXT = GetString("DIALOG_BUTTON_CANCEL");
-#endif
 
 	mImages = new DDImage*[36];
 	for (int i = 0; i < 36; i++)
@@ -553,13 +492,7 @@ void WinDMApp::LoadingThreadProc()
 {
 	mNumLoadingThreadTasks = 60;
 
-#if BEJEWELED_VERSION >= 1870
-	std::fstream aStream("data\\diff.txt", std::ios::in);
-#elif _MSC_VER > 1300
-	std::ifstream aStream("data\\diff.txt");
-#else
-	ifstream aStream("data\\diff.txt");
-#endif
+	std::fstream aStream(ResolveDataPath("data/diff.txt").c_str(), std::ios::in);
 	aStream >> m_unk0x5ec >> m_unk0x5f0 >> m_unk0x5f8 >> m_unk0x600 >> m_unk0x608 >> m_unk0x610 >> m_unk0x618
 		>> m_unk0x620 >> m_unk0x628 >> m_unk0x630 >> m_unk0x638 >> m_unk0x640;
 
@@ -599,19 +532,12 @@ void WinDMApp::LoadingThreadProc()
 	m_unk0x6d0[24] = CreateColorizedImage(mImages[20], Color(255, 255, 255));
 
 	m_unk0x654 = new Image**[7];
-#if BEJEWELED_VERSION < 1870
-	MemoryImage* anImage;
-#endif
 	for (i = 0; i < 7; i++)
 	{
 		m_unk0x654[i] = new Image*[6];
 		for (int j = 0; j < 6; j++)
 		{
-#if BEJEWELED_VERSION >= 1870
 			MemoryImage* anImage = new MemoryImage(this);
-#else
-			anImage = new MemoryImage(this);
-#endif
 			anImage->Create(49, 49);
 
 			int aSize = (int)((1.0 - (j + 1.0) / 7.0) * 49.0) | 1;
@@ -817,16 +743,7 @@ void WinDMApp::ConfirmLoadGame()
 // FUNCTION: GAME187 0x4d68da
 void WinDMApp::CheckForUpdates()
 {
-	KillDialog(18);
-
-	UpdateCheckDialog* aDialog = new UpdateCheckDialog(mImages[10], mImages[11], mImages[12], 18);
-	aDialog->SetButtonFont(m_unk0x690);
-	aDialog->SetHeaderFont(m_unk0x68c);
-	aDialog->SetLinesFont(m_unk0x690);
-	aDialog->Resize(146, 50, 348, aDialog->GetPreferredHeight(348));
-	AddDialog(18, aDialog);
-
-	mInternetManager->CheckForUpdates("http://www.popcap.com/win32updatecheck.php?prod=" + mProdName + "&ver=" + mProductVersion + "&referid=" + mReferId);
+	// No update server to ask.
 }
 
 // FUNCTION: GAME 0x40d807
@@ -900,11 +817,6 @@ void WinDMApp::ShowColorDepthExplanation()
 // FUNCTION: GAME187 0x4d5cdf
 void WinDMApp::ShowRegisterNag()
 {
-#if BEJEWELED_VERSION < 1870
-	if (mMaxTime > 0)
-		return;
-
-#endif
 	char aBuffer[256];
 	if (mIsDiamondMine)
 		sprintf(aBuffer, GetString("YOU_HAVE_PLAYED_DIAMOND_MINE_D_TIMES").c_str(), mTimesPlayed);
@@ -971,6 +883,4 @@ void WinDMApp::FinishLoading()
 	NewBoard();
 	ConfirmLoadGame();
 }
-#if BEJEWELED_VERSION >= 1870
 
-#endif

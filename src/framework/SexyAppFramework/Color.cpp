@@ -134,7 +134,7 @@ int Color::operator[](int theIdx) const
 }
 
 // FUNCTION: GAME187 0x404370
-ulong Color::ToInt() const
+uint32_t Color::ToInt() const
 {
 	return (mAlpha << 24) | (mRed << 16) | (mGreen << 8) | (mBlue);
 }

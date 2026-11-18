@@ -7,7 +7,9 @@
 #include "Rect.h"
 #include "Ratio.h"
 
-#include <ddraw.h>
+struct SDL_Window;
+struct SDL_Renderer;
+struct SDL_Texture;
 
 namespace Sexy
 {
@@ -16,11 +18,13 @@ class SexyAppBase;
 class DDImage;
 class Image;
 class MemoryImage;
-class D3DInterface;
-class D3DTester;
 
 typedef std::set<DDImage*> DDImageSet;
 
+// Switch port of the DirectDraw display. The game draws into mScreenImage, a plain 32-bit ARGB MemoryImage at the
+// game's resolution (640x480). Redraw() uploads it to an SDL streaming texture, draws the cursor on top and presents
+// it scaled to fit the Switch screen (letterboxed, linear filtering); mPresentationRect is that destination rectangle
+// in window pixels, which RemapMouse() uses to turn touch positions into game coordinates.
 // VTABLE: GAME187 0x50cc74
 class DDInterface : public NativeDisplay
 {
@@ -38,82 +42,49 @@ public:
 	};
 
 	SexyAppBase*			mApp;
-	D3DInterface*			mD3DInterface;
-	D3DTester*				mD3DTester;
-	bool					mIs3D;
+	bool					mIs3D;		// always false: everything is drawn by the software renderer
 
 	CritSect				mCritSect;
 	bool					mInRedraw;
-	LPDIRECTDRAW			mDD;
-	LPDIRECTDRAW7			mDD7;
-	LPDIRECTDRAWSURFACE		mPrimarySurface;
-	LPDIRECTDRAWSURFACE		mSecondarySurface;
-	LPDIRECTDRAWSURFACE		mDrawSurface;
 	int						mWidth;
 	int						mHeight;
 	Ratio					mAspect;
-	int						mDesktopWidth;
-	int						mDesktopHeight;
-	Ratio					mDesktopAspect;
-	bool					mIsWidescreen;
 	int						mDisplayWidth;
 	int						mDisplayHeight;
-	Ratio					mDisplayAspect;
 
 	Rect					mPresentationRect;
-	int						mFullscreenBits;
 	DWORD					mRefreshRate;
 	DWORD					mMillisecondsPerFrame;
-	int						mScanLineFailCount;
-
-	int*					mRedAddTable;
-	int*					mGreenAddTable;
-	int*					mBlueAddTable;
-
-	ulong					mRedConvTable[256];
-	ulong					mGreenConvTable[256];
-	ulong					mBlueConvTable[256];
 
 	bool					mInitialized;
-	HWND					mHWnd;
+	HWND					mHWnd;		// the SDL_Window, as an opaque handle
 	bool					mIsWindowed;
 	DDImage*				mScreenImage;
 	DDImageSet				mDDImageSet;
 	bool					mVideoOnlyDraw;
-	ulong					mInitCount;
+	uint32_t				mInitCount;
 
-	int						mCursorWidth;
-	int						mCursorHeight;
 	int						mNextCursorX;
 	int						mNextCursorY;
 	int						mCursorX;
 	int						mCursorY;
 	Image*					mCursorImage;
-	bool					mHasOldCursorArea;	
-	LPDIRECTDRAWSURFACE		mOldCursorArea;
-	LPDIRECTDRAWSURFACE		mNewCursorArea;	
-	DDImage*				mOldCursorAreaImage;
-	DDImage*				mNewCursorAreaImage;	
+	bool					mShowCursor;
 
 	std::string				mErrorString;
 
+	SDL_Window*				mWindow;
+	SDL_Renderer*			mRenderer;
+	SDL_Texture*			mTexture;
+
 public:
-	bool					CopyBitmap(LPDIRECTDRAWSURFACE theSurface, HBITMAP TheBitmap, int theX, int theY, int theWidth, int theHeight);
-	ulong					GetColorRef(ulong theRGB);
 	void					AddDDImage(DDImage* theDDImage);
 	void					RemoveDDImage(DDImage* theDDImage);
-	void					Remove3DData(MemoryImage* theImage); // for 3d texture cleanup
+	void					Remove3DData(MemoryImage* theImage);
 
 	void					Cleanup();
-	bool					GotDXError(HRESULT theResult, const char *theContext = "");
-
-	void					RestoreOldCursorAreaFrom(LPDIRECTDRAWSURFACE theSurface, bool adjust);
-	void					DrawCursorTo(LPDIRECTDRAWSURFACE theSurface, bool adjust);
-	void					MoveCursorTo(LPDIRECTDRAWSURFACE theSurface, bool adjust, int theNewCursorX, int theNewCursorY);
-
-	HRESULT					CreateSurface(DDSURFACEDESC2 *theDesc, LPDIRECTDRAWSURFACE *theSurface, void*);
-	void					ClearSurface(LPDIRECTDRAWSURFACE theSurface);
-	bool					Do3DTest(HWND theHWND);
+	void					UpdatePresentationRect();
+	void					DrawCursorTo(uint32_t* theBits, int thePitch);
 
 public:
 	DDInterface(SexyAppBase* theApp);
@@ -122,8 +93,8 @@ public:
 	static std::string		ResultToString(int theResult);
 
 	DDImage*				GetScreenImage();
-	int						Init(HWND theWindow, bool IsWindowed);	
-	bool					Redraw(Rect* theClipRect = NULL);	
+	int						Init(HWND theWindow, bool IsWindowed);
+	bool					Redraw(Rect* theClipRect = NULL);
 	void					SetVideoOnlyDraw(bool videoOnly);
 	void					RemapMouse(int& theX, int& theY);
 
@@ -134,4 +105,3 @@ public:
 }
 
 #endif //__DDINTERFACE_H__
-

@@ -16,7 +16,7 @@ public:
 	DataElement();
 	virtual ~DataElement();
 
-	virtual DataElement*	Duplicate() = NULL;
+	virtual DataElement*	Duplicate() = 0;
 };
 
 // VTABLE: GAME187 0x50cd0c

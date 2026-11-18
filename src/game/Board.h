@@ -3,7 +3,7 @@
 
 #include <string>
 #include <list>
-#include <windows.h>
+#include "win32compat.h"
 #include "SexyAppFramework/Widget.h"
 #include "decomp.h"
 

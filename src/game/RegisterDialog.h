@@ -2,9 +2,7 @@
 #define __REGISTERDIALOG_H__
 
 #include "SexyAppFramework/Dialog.h"
-#if BEJEWELED_VERSION >= 1870
 #include "SexyAppFramework/Rect.h"
-#endif
 #include "SexyAppFramework/EditListener.h"
 #include "decomp.h"
 
@@ -15,9 +13,6 @@ class EditWidget;
 class HyperlinkWidget;
 class WinDMApp;
 class Graphics;
-#if BEJEWELED_VERSION < 1870
-class Rect;
-#endif
 
 // RTTI: .?AVRegisterDialog@Sexy@@ - asks for the registration name and code. Size 0x128.
 

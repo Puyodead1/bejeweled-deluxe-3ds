@@ -187,7 +187,7 @@ void WidgetManager::FlushDeferredOverlayWidgets(int theMaxPriority)
 }
 
 // FUNCTION: GAME187 0x480e60
-void WidgetManager::DoMouseUps(Widget* theWidget, ulong theDownCode)
+void WidgetManager::DoMouseUps(Widget* theWidget, uint32_t theDownCode)
 {
 	int aClickCountTable[3] = { 1,-1, 3 };
 	for (int i = 0; i < 3; i++)

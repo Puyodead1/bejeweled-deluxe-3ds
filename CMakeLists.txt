@@ -31,6 +31,45 @@ target_include_directories(nx_modplug INTERFACE ${PORTLIBS}/include)
 target_link_directories(nx_modplug INTERFACE ${PORTLIBS}/lib)
 target_link_libraries(nx_modplug INTERFACE modplug stdc++ m)
 
+# Image and Ogg codecs, also from dkp-pacman (switch-libpng, switch-libjpeg-turbo, switch-zlib, switch-libvorbisidec,
+# switch-libogg). They replace the 1999-era copies the Windows game shipped with.
+add_library(nx_codecs INTERFACE)
+target_include_directories(nx_codecs INTERFACE ${PORTLIBS}/include)
+target_link_directories(nx_codecs INTERFACE ${PORTLIBS}/lib)
+target_link_libraries(nx_codecs INTERFACE png jpeg vorbisidec ogg z)
+
+# Old MSVC code: char is signed there, and a few pre-standard constructs only get warnings with -fpermissive.
+set(SEXY_CXX_FLAGS -fsigned-char -fpermissive -fno-strict-aliasing -Wno-write-strings -Wno-narrowing
+    -Wno-unused-result -Wno-deprecated-declarations -Wno-multichar)
+
+# --- SexyAppFramework + ImageLib + PakLib ------------------------------------------------------------
+set(SEXY_DIR ${CMAKE_SOURCE_DIR}/src/framework/SexyAppFramework)
+file(GLOB SEXY_SOURCES CONFIGURE_DEPENDS ${SEXY_DIR}/*.cpp)
+# SWTri_*.cpp are #included by SWTri.cpp; they aren't translation units.
+list(FILTER SEXY_SOURCES EXCLUDE REGEX "/SWTri_[^/]*\\.cpp$")
+file(GLOB PLATFORM_SOURCES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/platform/switch/*.cpp)
+list(FILTER PLATFORM_SOURCES EXCLUDE REGEX "/hello\\.cpp$")
+
+add_library(sexyframework STATIC
+    ${SEXY_SOURCES}
+    ${PLATFORM_SOURCES}
+    src/framework/ImageLib/ImageLib.cpp
+    src/framework/PakLib/PakInterface.cpp
+)
+target_include_directories(sexyframework PUBLIC
+    ${CMAKE_SOURCE_DIR}/platform/switch
+    ${CMAKE_SOURCE_DIR}/src/framework
+    ${SEXY_DIR}
+)
+target_compile_options(sexyframework PUBLIC $<$<COMPILE_LANGUAGE:CXX>:${SEXY_CXX_FLAGS}>)
+target_link_libraries(sexyframework PUBLIC nx_codecs nx_modplug nx_sdl2)
+
+# --- The game ----------------------------------------------------------------------------------------
+file(GLOB GAME_SOURCES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/src/game/*.cpp)
+add_executable(bejeweled ${GAME_SOURCES})
+target_include_directories(bejeweled PRIVATE ${CMAKE_SOURCE_DIR}/src/game)
+target_link_libraries(bejeweled PRIVATE sexyframework)
+
 # --- Phase 1: toolchain smoke test ------------------------------------------------------------------
 # Proves SDL2 video/audio/input, libmodplug and the packed romfs on hardware or in an emulator.
 add_executable(hello platform/switch/hello.cpp)
@@ -47,5 +86,13 @@ nx_create_nro(hello
     OUTPUT ${CMAKE_BINARY_DIR}/hello.nro
     ICON ${CMAKE_SOURCE_DIR}/res/icon.jpg
     NACP ${CMAKE_BINARY_DIR}/hello.nacp
+    ROMFS ${ROMFS_DIR}
+)
+
+nx_generate_nacp(bejeweled.nacp NAME "Bejeweled Deluxe" AUTHOR "PopCap Games" VERSION "${PROJECT_VERSION}")
+nx_create_nro(bejeweled
+    OUTPUT ${CMAKE_BINARY_DIR}/bejeweled.nro
+    ICON ${CMAKE_SOURCE_DIR}/res/icon.jpg
+    NACP ${CMAKE_BINARY_DIR}/bejeweled.nacp
     ROMFS ${ROMFS_DIR}
 )

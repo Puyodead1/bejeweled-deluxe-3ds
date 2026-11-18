@@ -81,7 +81,6 @@
 			
 			*pix = ((finalAlpha-1)<<24) | tr | tg | tb;
 		}
-		else
-			_asm nop;
+		// else: (nearly) transparent, nothing to draw
 	}
 	#endif

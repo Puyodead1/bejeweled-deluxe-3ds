@@ -1,16 +1,14 @@
-#define XMD_H
-
-#include <windows.h>
+#include "win32compat.h"
 #include "ImageLib.h"
-#include "png\png.h"
+#include <png.h>
+#include <setjmp.h>
 #include <math.h>
-#include <tchar.h>
-#include "..\PakLib\PakInterface.h"
+#include "../PakLib/PakInterface.h"
 
 extern "C"
 {
-#include "jpeg\jpeglib.h"
-#include "jpeg\jerror.h"
+#include <jpeglib.h>
+#include <jerror.h>
 }
 
 //#include "jpeg2000/jasper.h"
@@ -28,7 +26,7 @@ Image::Image()
 // FUNCTION: GAME187 0x4968b0
 Image::~Image()
 {
-	delete mBits;
+	delete[] mBits;
 }
 
 // FUNCTION: GAME187 0x404360
@@ -44,7 +42,7 @@ int	Image::GetHeight()
 }
 
 // FUNCTION: GAME187 0x4968e0
-unsigned long* Image::GetBits()
+uint32_t* Image::GetBits()
 {
 	return mBits;
 }
@@ -61,7 +59,7 @@ static void png_pak_read_data(png_structp png_ptr, png_bytep data, png_size_t le
 	* instead of an int, which is what fread() actually returns.
 	*/
 	check = (png_size_t)p_fread(data, (png_size_t)1, length,
-		(PFILE*)png_ptr->io_ptr);
+		(PFILE*)png_get_io_ptr(png_ptr));
 
 	if (check != length)
 	{
@@ -105,7 +103,7 @@ Image* GetPNGImage(const std::string& theFileName)
     * the normal method of doing things with libpng).  REQUIRED unless you
     * set up your own error handlers in the png_create_read_struct() earlier.
     */
-	if (setjmp(png_ptr->jmpbuf))
+	if (setjmp(png_jmpbuf(png_ptr)))
 	{
 		/* Free all of the memory associated with the png_ptr and info_ptr */
 		png_destroy_read_struct(&png_ptr, &info_ptr, (png_infopp)NULL);
@@ -131,8 +129,8 @@ Image* GetPNGImage(const std::string& theFileName)
 	png_set_bgr(png_ptr);
 
 //	int aNumBytes = png_get_rowbytes(png_ptr, info_ptr) * height / 4;
-	unsigned long* aBits = new unsigned long[width*height];
-	unsigned long* anAddr = aBits;
+	uint32_t* aBits = new uint32_t[width*height];
+	uint32_t* anAddr = aBits;
 	for (int i = 0; i < height; i++)
 	{
 		png_read_rows(png_ptr, (png_bytepp) &anAddr, NULL, 1);
@@ -210,7 +208,7 @@ Image* GetTGAImage(const std::string& theFileName)
 
 	anImage->mWidth = anImageWidth;
 	anImage->mHeight = anImageHeight;
-	anImage->mBits = new unsigned long[anImageWidth*anImageHeight];
+	anImage->mBits = new uint32_t[anImageWidth*anImageHeight];
 
 	p_fread(anImage->mBits, 4, anImage->mWidth*anImage->mHeight, aTGAFile);
 
@@ -422,7 +420,7 @@ Image* GetGIFImage(const std::string& theFileName)
 		p_fread(&flag, sizeof(char), 1, fp);
 
 		colors=!BitSet(flag,0x80) ? global_colors : 1 << ((flag & 0x07)+1);
-		unsigned long* colortable = new unsigned long[colors];
+		uint32_t* colortable = new uint32_t[colors];
 
 		interlaced = BitSet(flag,0x40);
 
@@ -585,7 +583,7 @@ Image* GetGIFImage(const std::string& theFileName)
 		pass=0;
 		top_stack=pixel_stack;
 
-		unsigned long* aBits = new unsigned long[width*height];
+		uint32_t* aBits = new uint32_t[width*height];
 
 		register unsigned char *c = NULL;
 
@@ -596,7 +594,7 @@ Image* GetGIFImage(const std::string& theFileName)
 			//break;
 			//indexes=GetIndexes(image);
 
-			unsigned long* q = aBits + offset*width;
+			uint32_t* q = aBits + offset*width;
 
 
 
@@ -845,7 +843,7 @@ bool ImageLib::WriteJPEGImage(const std::string& theFileName, Image* theImage)
 
 	unsigned char* aTempBuffer = new unsigned char[row_stride];
 
-	unsigned long* aSrcPtr = theImage->mBits;
+	uint32_t* aSrcPtr = theImage->mBits;
 
 	for (int aRow = 0; aRow < theImage->mHeight; aRow++)
 	{
@@ -853,7 +851,7 @@ bool ImageLib::WriteJPEGImage(const std::string& theFileName, Image* theImage)
 
 		for (int aCol = 0; aCol < theImage->mWidth; aCol++)
 		{
-			unsigned long src = *(aSrcPtr++);
+			uint32_t src = *(aSrcPtr++);
 
 			*aDest++ = (src >> 16) & 0xFF;
 			*aDest++ = (src >>  8) & 0xFF;
@@ -906,7 +904,7 @@ bool ImageLib::WritePNGImage(const std::string& theFileName, Image* theImage)
    // the normal method of doing things with libpng).  REQUIRED unless you
    // set up your own error handlers in the png_create_write_struct() earlier.
 
-	if (setjmp(png_ptr->jmpbuf))
+	if (setjmp(png_jmpbuf(png_ptr)))
 	{
 		// Free all of the memory associated with the png_ptr and info_ptr
 		png_destroy_write_struct(&png_ptr, &info_ptr);
@@ -1007,38 +1005,7 @@ bool ImageLib::WriteTGAImage(const std::string& theFileName, Image* theImage)
 
 bool ImageLib::WriteBMPImage(const std::string& theFileName, Image* theImage)
 {
-	FILE* aFile = fopen(theFileName.c_str(), "wb");
-	if (aFile == NULL)
-		return false;
-
-	BITMAPFILEHEADER aFileHeader;
-	BITMAPINFOHEADER aHeader;
-
-	memset(&aFileHeader,0,sizeof(aFileHeader));
-	memset(&aHeader,0,sizeof(aHeader));
-
-	int aNumBytes = theImage->mWidth*theImage->mHeight*4;
-
-	aFileHeader.bfType = ('M'<<8) | 'B';
-	aFileHeader.bfSize = sizeof(aFileHeader) + sizeof(aHeader) + aNumBytes;
-	aFileHeader.bfOffBits = sizeof(aHeader); 
-
-	aHeader.biSize = sizeof(aHeader);
-	aHeader.biWidth = theImage->mWidth;
-	aHeader.biHeight = theImage->mHeight;
-	aHeader.biPlanes = 1;
-	aHeader.biBitCount = 32;
-	aHeader.biCompression = BI_RGB;
-
-	fwrite(&aFileHeader,sizeof(aFileHeader),1,aFile);
-	fwrite(&aHeader,sizeof(aHeader),1,aFile);
-	DWORD *aRow = theImage->mBits + (theImage->mHeight-1)*theImage->mWidth;
-	int aRowSize = theImage->mWidth*4;
-	for (int i=0; i<theImage->mHeight; i++, aRow-=theImage->mWidth)
-		fwrite(aRow,4,theImage->mWidth,aFile);
-
-	fclose(aFile);
-	return true;
+	return false;
 }
 
 ////////////////////////////////////////////////////////////////////////// 
@@ -1176,8 +1143,8 @@ Image* GetJPEGImage(const std::string& theFileName)
 	unsigned char** buffer = (*cinfo.mem->alloc_sarray)
 		((j_common_ptr) &cinfo, JPOOL_IMAGE, row_stride, 1);
 
-	unsigned long* aBits = new unsigned long[cinfo.output_width*cinfo.output_height];
-	unsigned long* q = aBits;
+	uint32_t* aBits = new uint32_t[cinfo.output_width*cinfo.output_height];
+	uint32_t* q = aBits;
 
 	if (cinfo.output_components==1)
 	{
@@ -1224,358 +1191,23 @@ Image* GetJPEGImage(const std::string& theFileName)
 	return anImage;
 }
 
-#if 0
-Image* GetJPEG2000Image(const std::string& theFileName)
-{
-	DWORD aTick = GetTickCount();
-
-	static bool inited = false;
-	if (!inited)
-	{
-		inited = true;
-		jas_init();
-	}
-
-	jas_stream_t* aStream = jas_stream_fopen(theFileName.c_str(),"rb");
-	if (!aStream)
-		return NULL;
-
-	// Read Image Header
-	int aFormat = jas_image_getfmt(aStream);
-	if (aFormat < 0)
-	{
-		jas_stream_close(aStream);
-		return NULL;
-	}
-
-	jas_image_t* aJasImage = jas_image_decode(aStream,aFormat,NULL);
-	if (!aJasImage)
-	{
-		jas_stream_close(aStream);
-		return NULL;
-	}
-
-	DWORD aDecodeTime = GetTickCount() - aTick;
-
-	int aNumComponents = jas_image_numcmpts(aJasImage);
-	if (aNumComponents<1 || aNumComponents>4)
-	{
-		jas_stream_close(aStream);
-		jas_image_destroy(aJasImage);
-		return NULL;
-	}
-
-	int i;
-	int aMaxWidth = 0;
-	int aMaxHeight = 0;
-	for (i=0; i<aNumComponents; i++)
-	{
-		int hstep = jas_image_cmpthstep(aJasImage,i);
-		int numHSteps = jas_image_cmptwidth(aJasImage,i);
-
-		int vstep = jas_image_cmptvstep(aJasImage,i);
-		int numVSteps = jas_image_cmptheight(aJasImage,i);
-
-		int aWidth = jas_image_cmpttlx(aJasImage,i) + hstep*numHSteps;
-		int aHeight = jas_image_cmpttly(aJasImage,i) + vstep*numVSteps;
-
-		if (aWidth > aMaxWidth)
-			aMaxWidth = aWidth;
-
-		if (aHeight > aMaxHeight)
-			aMaxHeight = aHeight;
-	}
-
-	// Read Image Data
-	Image *anImage = new Image;
-	anImage->mWidth = aMaxWidth;
-	anImage->mHeight = aMaxHeight;
-	anImage->mBits = new unsigned long[aMaxWidth * aMaxHeight];
-	memset(anImage->mBits,0,aMaxWidth * aMaxHeight*4);
-
-	int aColorModel = jas_image_clrspc(aJasImage);
-
-	for (i=0; i<aNumComponents; i++)
-	{
-		int hstep = jas_image_cmpthstep(aJasImage,i);
-		int vstep = jas_image_cmptvstep(aJasImage,i);
-		int numHSteps = jas_image_cmptwidth(aJasImage,i);
-		int numVSteps = jas_image_cmptheight(aJasImage,i);
-		int xorig = jas_image_cmpttlx(aJasImage,i);
-		int yorig = jas_image_cmpttly(aJasImage,i);
-		bool sign = jas_image_cmptsgnd(aJasImage,i)?true:false;
-
-		jas_matrix_t* aMatrix = jas_matrix_create(1,numHSteps);
-		if (!aMatrix)
-		{
-			delete anImage;
-			jas_image_destroy(aJasImage);
-			jas_stream_close(aStream);
-
-			return NULL;
-		}
-
-		int aShift = 8 - jas_image_cmptprec(aJasImage,i);
-		if (aShift<0)
-		{
-			delete anImage;
-			jas_matrix_destroy(aMatrix);
-			jas_image_destroy(aJasImage);
-			jas_stream_close(aStream);
-
-			return NULL;
-		}
-
-		unsigned long* destRow = anImage->mBits + yorig*numVSteps*anImage->GetWidth() + xorig*numHSteps;
-
-		// color model
-		int aComponentType = jas_image_cmpttype(aJasImage,i);
-		int aColorType = JAS_IMAGE_CT_COLOR(aComponentType);
-
-		switch (aColorType)
-		{
-			case JAS_IMAGE_CT_RGB_R: aShift += 16; break;
-			case JAS_IMAGE_CT_RGB_G: aShift += 8; break;
-			case JAS_IMAGE_CT_RGB_B: break;
-			default: aShift += 24; break; 
-		}
-
-		for (int y=0; y<numVSteps; y++)
-		{
-			if (jas_image_readcmpt(aJasImage,i,0,y,numHSteps,1,aMatrix) )
-			{
-				delete anImage;
-				jas_matrix_destroy(aMatrix);
-				jas_image_destroy(aJasImage);
-				jas_stream_close(aStream);
-
-				return NULL;			
-			}
-
-			unsigned long* dest = destRow;
-			for (int x=0; x<numHSteps; x++)
-			{
-				int aVal = jas_matrix_getv(aMatrix,x);
-				if (sign)
-					aVal = (unsigned char)(aVal + 128);
-
-				aVal <<= aShift;
-
-				unsigned long *destRowWriter = dest;
-				for (int j=0; j<vstep; j++)
-				{
-					unsigned long *destWriter = destRowWriter;
-					for (int k=0; k<hstep; k++)
-						*destWriter++ |= aVal;
-
-					destRowWriter += anImage->GetWidth();
-				}
-
-				dest += hstep;
-			}
-			destRow += vstep*anImage->GetWidth();
-		}
-
-		// release decoding matrix
-		jas_matrix_destroy(aMatrix);
-	}
-
-	DWORD aReadTime = GetTickCount() - aTick;
-	char aBuf[512];
-	sprintf(aBuf,"%d %d\n",aDecodeTime,aReadTime);
-	OutputDebugString(aBuf);
-
-
-	if (aNumComponents < 4) // add 255 alpha
-	{
-		int aSize = anImage->GetWidth()*anImage->GetHeight();
-		unsigned long *dest = anImage->mBits;
-		for (i=0; i<aSize; i++)
-			*dest++ |= 0xff000000;
-	}
-
-	jas_image_destroy(aJasImage);
-	jas_stream_close(aStream);
-
-	return anImage;
-}
-#else
-
-// j2k-codec.dll is loaded at runtime; these are the only pieces of its (commercial) j2k-codec.h that we use.
-typedef struct
-{
-	int  (__stdcall *seek)  (void *data_source, int offset);
-	int  (__stdcall *read)  (void *ptr, int size, void *data_source);
-	void (__stdcall *close) (void *data_source);
-}
-J2K_Callbacks;
-enum { J2KERR_SUCCESS = 0 };
-
-HMODULE gJ2KCodec = NULL;
-std::string gJ2KCodecKey = "Your registration here";
-
-// FUNCTION: GAME187 0x497c00
+// JPEG 2000 went through a commercial Windows DLL (j2k-codec.dll); Bejeweled ships no .j2k/.jp2 files.
 void ImageLib::InitJPEG2000()
 {
-	gJ2KCodec = ::LoadLibrary(_T("j2k-codec.dll"));
 }
 
-// FUNCTION: GAME187 0x497c20
 void ImageLib::CloseJPEG2000()
 {
-	if (gJ2KCodec != NULL)
-	{
-		::FreeLibrary(gJ2KCodec);
-		gJ2KCodec = NULL;
-	}
 }
 
 void ImageLib::SetJ2KCodecKey(const std::string& theKey)
 {
-	gJ2KCodecKey = theKey;
 }
 
-// FUNCTION: GAME187 0x497c50
-int __stdcall Pak_seek(void *data_source, int offset)
+static Image* GetJPEG2000Image(const std::string& theFileName)
 {
-	return p_fseek((PFILE*) data_source, offset, SEEK_SET);
-}
-
-// FUNCTION: GAME187 0x497c70
-int __stdcall Pak_read(void *ptr, int size, void *data_source)
-{
-	return p_fread(ptr, 1, size, (PFILE*) data_source);
-}
-
-void __stdcall Pak_close(void *data_source)
-{	
-}
-
-// FUNCTION: GAME187 0x497ca0
-Image* GetJPEG2000Image(const std::string& theFileName)
-{
-	if (gJ2KCodec != NULL)
-	{
-		PFILE* aFP = p_fopen(theFileName.c_str(), "rb");
-		if (aFP == NULL)
-			return NULL;
-
-		static int (__stdcall *fJ2K_getVersion)() = NULL;
-		static void (__stdcall *fJ2K_Unlock)(const char*) = NULL;
-		static void* (__stdcall *fJ2K_OpenCustom)(void*, J2K_Callbacks*) = NULL;
-		static void* (__stdcall *fJ2K_OpenFile)(const char*) = NULL;
-		static void (__stdcall *fJ2K_Close)(void*) = NULL;
-		static int (__stdcall *fJ2K_GetInfo)(void*, int*, int*, int*) = NULL;
-		static int (__stdcall *fJ2K_GetResolutionDimensions)(void*, int, int*, int*) = NULL;
-		static int (__stdcall *fJ2K_Decode)(void*, unsigned char**, int*, char*, int*) = NULL;
-		static int (__stdcall *fJ2K_getLastError)() = NULL;
-		static const char* (__stdcall *fJ2K_getErrorStr)(int) = NULL;
-		static bool loadFuncs = true;
-
-		if (loadFuncs)
-		{
-			loadFuncs = false;
-			*((void**)&fJ2K_getVersion) = (void*)::GetProcAddress(gJ2KCodec, "_J2K_getVersion@0");
-			*((void**)&fJ2K_Unlock) = (void*)::GetProcAddress(gJ2KCodec, "_J2K_Unlock@4");
-			*((void**)&fJ2K_OpenCustom) = (void*)::GetProcAddress(gJ2KCodec, "_J2K_OpenCustom@8");
-			*((void**)&fJ2K_OpenFile) = (void*)::GetProcAddress(gJ2KCodec, "_J2K_OpenFile@4");
-			*((void**)&fJ2K_Close) = (void*)::GetProcAddress(gJ2KCodec, "_J2K_Close@4");
-			*((void**)&fJ2K_GetInfo) = (void*)::GetProcAddress(gJ2KCodec, "_J2K_GetInfo@16");
-			*((void**)&fJ2K_GetResolutionDimensions) = (void*)::GetProcAddress(gJ2KCodec, "_J2K_GetResolutionDimensions@16");
-			*((void**)&fJ2K_Decode) = (void*)::GetProcAddress(gJ2KCodec, "_J2K_Decode@20");
-			*((void**)&fJ2K_getLastError) = (void*)::GetProcAddress(gJ2KCodec, "_J2K_getLastError@0");
-			*((void**)&fJ2K_getErrorStr) = (void*)::GetProcAddress(gJ2KCodec, "_J2K_getErrorStr@4");
-
-			// j2k guys didn't use declare the export names. yay! now we have to update these mangled names any time the DLL changes.
-
-			if (!(fJ2K_getVersion != NULL && 
-				  fJ2K_Unlock != NULL && 
-				  fJ2K_OpenCustom != NULL && 
-				  fJ2K_OpenFile != NULL && 
-				  fJ2K_Close != NULL && 
-				  fJ2K_GetInfo != NULL && 
-				  fJ2K_GetResolutionDimensions != NULL && 
-				  fJ2K_Decode != NULL &&
-				  fJ2K_getLastError != NULL &&
-				  fJ2K_getErrorStr != NULL))
-			{
-				CloseJPEG2000();
-				return NULL;
-			}
-
-			int aJ2kVer = (*fJ2K_getVersion)();
-			if (aJ2kVer < 0x120000) 
-			{
-				CloseJPEG2000();
-				return NULL;
-			}
-
-			(*fJ2K_Unlock)(gJ2KCodecKey.c_str()); 
-		}
-
-		J2K_Callbacks aCallbacks;
-		aCallbacks.read = Pak_read;
-		aCallbacks.seek = Pak_seek;
-		aCallbacks.close = Pak_close;
-
-		//theFileName.c_str()
-		void* aJ2KImage = (*fJ2K_OpenCustom)(aFP, &aCallbacks);
-		if (aJ2KImage == NULL)
-		{
-			int anErrNum = (*fJ2K_getLastError)();
-			std::string anErrorMessage = (*fJ2K_getErrorStr)(anErrNum);
-			return NULL;
-		}
-
-		int aWidth, aHeight, aComponents;
-		if ((*fJ2K_GetInfo)(aJ2KImage, &aWidth, &aHeight, &aComponents) != J2KERR_SUCCESS) 
-		{
-			(*fJ2K_Close)(aJ2KImage);
-			return NULL;
-		}
-
-		(*fJ2K_GetResolutionDimensions)(aJ2KImage, 0, &aWidth, &aHeight);
-		
-		unsigned long* aBuffer = new unsigned long[aWidth*aHeight];
-		if (aBuffer == NULL)
-		{
-			(*fJ2K_Close)(aJ2KImage);
-			return NULL;
-		}
-
-		char anOptsBuffer[32];
-		strcpy(anOptsBuffer, "bpp=4,rl=0");
-
-		int aSize = aWidth*aHeight*4;
-		int aPitch = aWidth*4;
-		if ((*fJ2K_Decode)(aJ2KImage, (unsigned char**)&aBuffer, &aSize, anOptsBuffer, &aPitch) != J2KERR_SUCCESS)
-		{
-			(*fJ2K_Close)(aJ2KImage);
-			delete[] aBuffer;
-			return NULL;
-		}
-		(*fJ2K_Close)(aJ2KImage);
-
-		ImageLib::Image* anImage = new ImageLib::Image;
-		anImage->mBits = aBuffer;
-		anImage->mWidth = aWidth;
-		anImage->mHeight = aHeight;
-		if (gIgnoreJPEG2000Alpha)
-		{
-			DWORD *aPtr = anImage->mBits;
-			DWORD *anEnd = aPtr+anImage->mWidth*anImage->mHeight;
-			for (; aPtr!=anEnd; ++aPtr)
-				*aPtr |= 0xFF000000;
-		}
-
-		p_fclose(aFP);
-
-		return anImage;
-	}
 	return NULL;
 }
-
-#endif
 
 
 int ImageLib::gAlphaComposeColor = 0xFFFFFF;
@@ -1645,8 +1277,8 @@ Image* ImageLib::GetImage(const std::string& theFilename, bool lookForAlphaImage
 			if ((anImage->mWidth == anAlphaImage->mWidth) &&
 				(anImage->mHeight == anAlphaImage->mHeight))
 			{
-				unsigned long* aBits1 = anImage->mBits;
-				unsigned long* aBits2 = anAlphaImage->mBits;
+				uint32_t* aBits1 = anImage->mBits;
+				uint32_t* aBits2 = anAlphaImage->mBits;
 				int aSize = anImage->mWidth*anImage->mHeight;
 
 				for (int i = 0; i < aSize; i++)
@@ -1663,7 +1295,7 @@ Image* ImageLib::GetImage(const std::string& theFilename, bool lookForAlphaImage
 		{
 			anImage = anAlphaImage;
 
-			unsigned long* aBits1 = anImage->mBits;
+			uint32_t* aBits1 = anImage->mBits;
 
 			int aSize = anImage->mWidth*anImage->mHeight;
 			for (int i = 0; i < aSize; i++)
@@ -1677,7 +1309,7 @@ Image* ImageLib::GetImage(const std::string& theFilename, bool lookForAlphaImage
 			const int aColor = gAlphaComposeColor;
 			anImage = anAlphaImage;
 
-			unsigned long* aBits1 = anImage->mBits;
+			uint32_t* aBits1 = anImage->mBits;
 
 			int aSize = anImage->mWidth*anImage->mHeight;
 			for (int i = 0; i < aSize; i++)

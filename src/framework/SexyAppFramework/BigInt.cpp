@@ -9,7 +9,7 @@
 ///////////////////////////////////////////////////////////////////////////////
 // MD5 (Colin Plumb's public domain implementation)
 
-typedef unsigned long uint32;
+typedef uint32_t uint32;
 
 struct MD5Context
 {

@@ -2,9 +2,7 @@
 #define __RECORDSCOREDIALOG_H__
 
 #include "SexyAppFramework/Dialog.h"
-#if BEJEWELED_VERSION >= 1870
 #include "SexyAppFramework/Rect.h"
-#endif
 #include "SexyAppFramework/EditListener.h"
 #include "decomp.h"
 
@@ -14,9 +12,6 @@ namespace Sexy
 class WinDMApp;
 class EditWidget;
 class Graphics;
-#if BEJEWELED_VERSION < 1870
-class Rect;
-#endif
 
 // RTTI: .?AVRecordScoreDialog@Sexy@@ - asks for a name after a high score, size 0x11c.
 

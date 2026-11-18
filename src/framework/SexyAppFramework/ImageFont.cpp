@@ -3,7 +3,8 @@
 #include "Image.h"
 #include "SexyAppBase.h"
 #include "MemoryImage.h"
-#include "..\SexyAppFramework\AutoCrit.h"
+#include "DDImage.h"
+#include "../SexyAppFramework/AutoCrit.h"
 
 using namespace Sexy;
 
@@ -54,7 +55,7 @@ ListDataElement::ListDataElement()
 // FUNCTION: GAME187 0x428220
 ListDataElement::~ListDataElement()
 {
-	for (ulong i = 0; i < mElementVector.size(); i++)
+	for (uint32_t i = 0; i < mElementVector.size(); i++)
 		delete mElementVector[i];
 }
 
@@ -62,14 +63,14 @@ ListDataElement::~ListDataElement()
 ListDataElement::ListDataElement(const ListDataElement& theListDataElement)
 {
 	mIsList = true;
-	for (ulong i = 0; i < theListDataElement.mElementVector.size(); i++)
+	for (uint32_t i = 0; i < theListDataElement.mElementVector.size(); i++)
 		mElementVector.push_back(theListDataElement.mElementVector[i]->Duplicate());
 }
 
 // FUNCTION: GAME187 0x4283a0
 ListDataElement& ListDataElement::operator=(const ListDataElement& theListDataElement)
 {
-	ulong i;
+	uint32_t i;
 
 	for (i = 0; i < mElementVector.size(); i++)
 		delete mElementVector[i];
@@ -96,7 +97,7 @@ CharData::CharData()
 	mWidth = 0;
 	mOrder = 0;
 
-	for (ulong i = 0; i < 256; i++)
+	for (uint32_t i = 0; i < 256; i++)
 		mKerningOffsets[i] = 0;
 }
 
@@ -140,7 +141,7 @@ FontLayer::FontLayer(const FontLayer& theFontLayer) :
 	mLineSpacingOffset(theFontLayer.mLineSpacingOffset),
 	mBaseOrder(theFontLayer.mBaseOrder)
 {
-	ulong i;
+	uint32_t i;
 
 	for (i = 0; i < 256; i++)
 		mCharData[i] = theFontLayer.mCharData[i];	
@@ -155,7 +156,7 @@ FontData::FontData()
 	mRefCount = 0;
 	mDefaultPointSize = 0;
 
-	for (ulong i = 0; i < 256; i++)
+	for (uint32_t i = 0; i < 256; i++)
 		mCharMap[i] = (uchar) i;
 }
 
@@ -332,7 +333,7 @@ bool FontData::HandleCommand(const ListDataElement& theParams)
 
 				ListDataElement* aRectList = new ListDataElement();
 
-				for (ulong aWidthNum = 0; aWidthNum < aWidthsVector.size(); aWidthNum++)
+				for (uint32_t aWidthNum = 0; aWidthNum < aWidthsVector.size(); aWidthNum++)
 				{							
 					ListDataElement* aRectElement = new ListDataElement();
 					aRectList->mElementVector.push_back(aRectElement);
@@ -398,7 +399,7 @@ bool FontData::HandleCommand(const ListDataElement& theParams)
 			{						
 				if (aFromVector.size() == aToVector.size())
 				{
-					for (ulong aMapIdx = 0; aMapIdx < aFromVector.size(); aMapIdx++)
+					for (uint32_t aMapIdx = 0; aMapIdx < aFromVector.size(); aMapIdx++)
 					{
 						if ((aFromVector[aMapIdx].length() == 1) && (aToVector[aMapIdx].length() == 1))
 						{
@@ -473,7 +474,7 @@ bool FontData::HandleCommand(const ListDataElement& theParams)
 			if ((DataToLayer(theParams.mElementVector[1], &aLayer)) && 
 				(DataToStringVector(theParams.mElementVector[2], &aStringVector)))
 			{
-				for (ulong i = 0; i < aStringVector.size(); i++)
+				for (uint32_t i = 0; i < aStringVector.size(); i++)
 					aLayer->mRequiredTags.push_back(StringToUpper(aStringVector[i]));
 			}
 			else
@@ -492,7 +493,7 @@ bool FontData::HandleCommand(const ListDataElement& theParams)
 			if ((DataToLayer(theParams.mElementVector[1], &aLayer)) && 
 				(DataToStringVector(theParams.mElementVector[2], &aStringVector)))
 			{
-				for (ulong i = 0; i < aStringVector.size(); i++)
+				for (uint32_t i = 0; i < aStringVector.size(); i++)
 					aLayer->mExcludedTags.push_back(StringToUpper(aStringVector[i]));
 			}
 			else
@@ -757,7 +758,7 @@ bool FontData::HandleCommand(const ListDataElement& theParams)
 			{
 				if (aCharsVector.size() == aCharWidthsVector.size())
 				{
-					for (ulong i = 0; i < aCharsVector.size(); i++)
+					for (uint32_t i = 0; i < aCharsVector.size(); i++)
 					{
 						if (aCharsVector[i].length() == 1)
 						{
@@ -821,7 +822,7 @@ bool FontData::HandleCommand(const ListDataElement& theParams)
 						int anImageWidth = aLayer->mImage->GetWidth();
 						int anImageHeight = aLayer->mImage->GetHeight();
 
-						for (ulong i = 0; i < aCharsVector.size(); i++)
+						for (uint32_t i = 0; i < aCharsVector.size(); i++)
 						{
 							IntVector aRectElement;
 
@@ -879,7 +880,7 @@ bool FontData::HandleCommand(const ListDataElement& theParams)
 			{	
 				if (aCharsVector.size() == aRectList.mElementVector.size())
 				{
-					for (ulong i = 0; i < aCharsVector.size(); i++)
+					for (uint32_t i = 0; i < aCharsVector.size(); i++)
 					{
 						IntVector aRectElement;
 
@@ -917,7 +918,7 @@ bool FontData::HandleCommand(const ListDataElement& theParams)
 			{
 				if (aPairsVector.size() == anOffsetsVector.size())
 				{
-					for (ulong i = 0; i < aPairsVector.size(); i++)
+					for (uint32_t i = 0; i < aPairsVector.size(); i++)
 					{
 						if (aPairsVector[i].length() == 2)
 						{
@@ -973,7 +974,7 @@ bool FontData::HandleCommand(const ListDataElement& theParams)
 			{
 				if (aCharsVector.size() == aCharOrdersVector.size())
 				{
-					for (ulong i = 0; i < aCharsVector.size(); i++)
+					for (uint32_t i = 0; i < aCharsVector.size(); i++)
 					{
 						if (aCharsVector[i].length() == 1)
 						{
@@ -1226,7 +1227,7 @@ void ImageFont::GenerateActiveFontLayers()
 
 	mActiveLayerList.clear();
 
-	ulong i;
+	uint32_t i;
 
 	mAscent = 0;	
 	mAscentPadding = 0;
@@ -1329,7 +1330,7 @@ void ImageFont::GenerateActiveFontLayers()
 					if (mForceScaledImagesWhite)
 					{
 						int aCount = aMemoryImage->mWidth*aMemoryImage->mHeight;
-						ulong* aBits = aMemoryImage->GetBits();
+						uint32_t* aBits = aMemoryImage->GetBits();
 
 						for (int i = 0; i < aCount; i++)
 							*(aBits++) = *aBits | 0x00FFFFFF;
@@ -1495,7 +1496,7 @@ void ImageFont::DrawStringEx(Graphics* g, int theX, int theY, const SexyString& 
 	int aCurXPos = theX;
 	int aCurPoolIdx = 0;
 
-	for (ulong aCharNum = 0; aCharNum < theString.length(); aCharNum++)
+	for (uint32_t aCharNum = 0; aCharNum < theString.length(); aCharNum++)
 	{
 		char aChar = mFontData->mCharMap[(uchar) theString[aCharNum]];
 		

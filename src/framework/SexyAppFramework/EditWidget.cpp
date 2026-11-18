@@ -186,7 +186,7 @@ void EditWidget::UpdateCaretPos()
 	if (aPoint.mY<10) aPoint.mY = 10;
 	else if (aPoint.mY>anApp->mHeight-10) aPoint.mY = anApp->mHeight-10;
 
-	SetCaretPos(aPoint.mX,aPoint.mY);
+	// Win32 SetCaretPos (Tablet PC input panel placement): nothing to do on Switch.
 }
 
 // FUNCTION: GAME187 0x484470
@@ -197,9 +197,7 @@ void EditWidget::GotFocus()
 	{
 		SexyAppBase *anApp = mWidgetManager->mApp;
 
-		CreateCaret(anApp->mHWnd,NULL,0,0);
 		UpdateCaretPos();
-		ShowCaret(anApp->mHWnd);
 	}
 	
 	mShowingCursor = true;
@@ -214,8 +212,6 @@ void EditWidget::LostFocus()
 
 	if (mWidgetManager && mWidgetManager->mApp->mTabletPC)
 	{
-		HideCaret(mWidgetManager->mApp->mHWnd);
-		DestroyCaret();
 	}
 
 	mShowingCursor = false;	
@@ -334,7 +330,7 @@ void EditWidget::ProcessKey(KeyCode theKey, SexyChar theChar)
 		{	
 			SexyString aString;
 
-			for (ulong i = 0; i < aBaseString.length(); i++)
+			for (uint32_t i = 0; i < aBaseString.length(); i++)
 			{
 				if ((aBaseString[i] == '\r') || (aBaseString[i] == '\n'))
 					break;

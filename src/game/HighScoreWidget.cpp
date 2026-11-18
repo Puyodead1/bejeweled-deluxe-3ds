@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#include <unistd.h>
 #include "WinDMApp.h"
 #include "Board.h"
 #include "SexyAppFramework/HyperlinkWidget.h"
@@ -84,11 +85,7 @@ void HighScoreWidget::ButtonDepress(int theId)
 // FUNCTION: GAME187 0x4ceec2
 void HighScoreWidget::Load()
 {
-#if BEJEWELED_VERSION >= 1870
-	FILE* aFP = fopen((GetAppDataFolder() + "userdata\\hiscores.dat").c_str(), "rb");
-#else
-	FILE* aFP = fopen("hiscores.dat", "rb");
-#endif
+	FILE* aFP = fopen((GetAppDataFolder() + "userdata/hiscores.dat").c_str(), "rb");
 	if (aFP != NULL)
 	{
 		for (int aMode = 0; aMode < 2; aMode++)
@@ -151,14 +148,9 @@ void HighScoreWidget::Load()
 // FUNCTION: GAME187 0x4cf1b4
 void HighScoreWidget::Save()
 {
-#if BEJEWELED_VERSION >= 1870
-	DeleteFileA((GetAppDataFolder() + "userdata\\hiscores.dat").c_str());
+	unlink((GetAppDataFolder() + "userdata/hiscores.dat").c_str());
 	MkDir(GetAppDataFolder() + "userdata");
-	FILE* aFP = fopen((GetAppDataFolder() + "userdata\\hiscores.dat").c_str(), "wb");
-#else
-	DeleteFileA("hiscores.dat");
-	FILE* aFP = fopen("hiscores.dat", "wb");
-#endif
+	FILE* aFP = fopen((GetAppDataFolder() + "userdata/hiscores.dat").c_str(), "wb");
 	if (aFP == NULL)
 	{
 		mApp->Popup("Failed to create high score file!\nPlease report to support@popcap.com.");

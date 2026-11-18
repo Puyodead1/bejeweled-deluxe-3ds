@@ -1,17 +1,6 @@
 #ifndef __SEXYAPPFRAMEWORK_COMMON_H__
 #define __SEXYAPPFRAMEWORK_COMMON_H__
 
-#pragma warning(disable:4786)
-#pragma warning(disable:4503)
-
-#undef _WIN32_WINNT
-#undef WIN32_LEAN_AND_MEAN
-
-#define WIN32_LEAN_AND_MEAN
-#define _WIN32_WINNT 0x0500
-#undef _UNICODE
-#undef UNICODE
-
 #include <string>
 #include <vector>
 #include <set>
@@ -20,10 +9,11 @@
 #include <algorithm>
 #include <cstdlib>
 
-#include <windows.h>
-#include <shellapi.h> 
-#include <mmsystem.h>
-#include "ModVal.h"
+#include <cstdint>
+#include <cstdarg>
+#include <ctime>
+#include <cwctype>
+#include "win32compat.h"
 
 #ifdef _USE_WIDE_STRING
 
@@ -97,8 +87,7 @@ typedef std::string			SexyString;
 typedef unsigned char uchar;
 typedef unsigned short ushort;
 typedef unsigned int uint;
-typedef unsigned long ulong;
-typedef __int64 int64;
+typedef int64_t int64;
 
 typedef std::map<std::string, std::string>		DefinesMap;
 typedef std::map<std::wstring, std::wstring>	WStringWStringMap;
@@ -108,15 +97,14 @@ typedef SexyString::value_type					SexyChar;
 namespace Sexy
 {
 
-const ulong SEXY_RAND_MAX = 0x7FFFFFFF;
+const uint32_t SEXY_RAND_MAX = 0x7FFFFFFF;
 
 extern bool			gDebug;
-extern HINSTANCE	gHInstance;
 
 int					Rand();
 int					Rand(int range);
 float				Rand(float range);
-void				SRand(ulong theSeed);
+void				SRand(uint32_t theSeed);
 extern std::string	vformat(const char* fmt, va_list argPtr);
 extern std::wstring	vformat(const wchar_t* fmt, va_list argPtr);
 extern std::string	StrFormat(const char* fmt ...);
@@ -223,7 +211,7 @@ inline void			inlineTrim(std::string &theData, const std::string& theChars = " \
 	inlineLTrim(theData, theChars);
 }
 
-struct StringLessNoCase { bool operator()(const std::string &s1, const std::string &s2) const { return _stricmp(s1.c_str(),s2.c_str())<0; } };
+struct StringLessNoCase { bool operator()(const std::string &s1, const std::string &s2) const { return strcasecmp(s1.c_str(),s2.c_str())<0; } };
 
 }
 

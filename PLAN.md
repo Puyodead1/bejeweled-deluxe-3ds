@@ -118,6 +118,17 @@ one: either rename/drop the vendored copy and use 1.3.1 (libpng 1.0.5 only uses 
      handles SDL_FINGER* itself (one finger, scaled to the window, same pointer path as the mouse) and opens the
      pads at startup. Autoinput taps now go in as finger events, so Eden tests the same path. Logs go to
      `nxlink -s` in any build when the NRO was sent with nxlink.
+   - Quitting crashed ("the software was closed because an error occurred", 2168-0002) in two ways. First,
+     `gWinDMApp` was a plain global whose destructor would have freed SDL objects after `SDL_Quit` (libnx's crt0 never
+     runs static destructors, so this was latent; the app is now deleted in `main`). The real crash: `nxlinkStdio`
+     puts stdout/stderr on the socket, `socketExit` removes the socket device, and `exit()` then closes those streams
+     through a NULL device table. Fixed by closing fds 1 and 2 before `socketExit`; only nxlink-started runs were
+     affected. Found with Atmosphère's crash report, which an nxlink-started game now prints at startup; reproduced in
+     Eden by putting stdout on a UDP socket.
+   - On the console: touch, A, the d-pad and the shortcuts work, Quit Game returns to hbmenu cleanly (+ takes the
+     same exit path). Frame
+     timing: about 11 ms software draw + 5 ms present per drawn frame, 100 updates/s throughout (the game only
+     redraws when something changes, so the fps figure varies with what's on screen).
    Still to check on hardware: HOME-menu close (saves) and suspend/resume, dock/undock while running, fps, audio
    queue length and feel.
 7. **Polish.** Remove trial/register/web UI, controller prompts where needed, cursor feel.

@@ -249,6 +249,11 @@ public:
 	bool					mPadButtonDown;
 	DWORD					mPadLastTick;
 	void*					mGameControllers[8];
+	int						mPadConsumed;			// buttons whose press ControllerButton took, so it gets the release
+	int						mDPadX;					// d-pad direction held (-1, 0, 1) and when it steps again
+	int						mDPadY;
+	DWORD					mDPadNextStep;
+	Dialog*					mPointerToDialog;		// a dialog just opened: put the controller pointer on its button
 	// Scripted test input (see LoadAutoInput).
 	std::vector<std::string>	mAutoInput;
 	size_t					mAutoInputIndex;
@@ -256,6 +261,7 @@ public:
 	double					mAutoStickX;
 	double					mAutoStickY;
 	DWORD					mAutoStickUntil;
+	int						mAutoDPad;				// d-pad buttons held by the script (1 << PAD_LEFT ...)
 	bool					mRunning;
 	bool					mActive;
 	bool					mMinimized;
@@ -601,10 +607,27 @@ public:
 	void					OpenControllers();
 	void					HandleControllerButton(int theButton, bool isDown);
 	void					PushKeyPress(int theKeyCode, int theChar);
+	void					MovePointerToGame(int theGameX, int theGameY);
 	void					LoadAutoInput();
 	void					ProcessAutoInput();
 	// For the autoinput "hint" commands: a good move as two positions in game pixels, or false if there is none.
 	virtual bool			GetAutoInputMove(int& theX1, int& theY1, int& theX2, int& theY2) { return false; }
+	// Script commands the framework doesn't know, for the game to handle (testing).
+	virtual void			AutoInputCommand(const std::string& theCommand, const char* theArgs) {}
+
+public:
+	// Joystick button numbers on SDL's Switch driver (Nintendo labels).
+	enum
+	{
+		PAD_A = 0, PAD_B = 1, PAD_X = 2, PAD_Y = 3, PAD_LSTICK = 4, PAD_RSTICK = 5, PAD_L = 6, PAD_R = 7, PAD_ZL = 8,
+		PAD_ZR = 9, PAD_PLUS = 10, PAD_MINUS = 11, PAD_LEFT = 12, PAD_UP = 13, PAD_RIGHT = 14, PAD_DOWN = 15
+	};
+
+	// Game hooks for the controller. ControllerButton sees each press first; returning true takes it (and its release)
+	// instead of the default (A/R/ZR click at the pointer, B Escape, + space). StepPointer moves the pointer one step
+	// for the d-pad (in game pixels), returning false where the d-pad should glide the pointer instead.
+	virtual bool			ControllerButton(int theButton) { return false; }
+	virtual bool			StepPointer(int& theGameX, int& theGameY, int theDX, int theDY) { return false; }
 };
 
 extern SexyAppBase* gSexyAppBase;

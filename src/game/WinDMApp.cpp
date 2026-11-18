@@ -4,12 +4,12 @@
 #include "Board.h"
 #include "SexyAppFramework/WidgetManager.h"
 #include "SexyAppFramework/Dialog.h"
+#include "SexyAppFramework/DialogButton.h"
 #include "TitleScreen.h"
 #include "HighScoreWidget.h"
 #include "RecordScoreDialog.h"
 #include "OptionsDialog.h"
 #include "HighScoreDialog.h"
-#include "RegisterDialog.h"
 #include "SexyAppFramework/Common.h"
 #include "SexyAppFramework/WidgetManager.h"
 #include "SexyAppFramework/MusicInterface.h"
@@ -81,14 +81,6 @@ void WinDMApp::Shutdown()
 	}
 }
 
-// FUNCTION: GAME 0x40bc7f
-// FUNCTION: GAME187 0x4d4592
-void WinDMApp::URLOpenSucceeded(const std::string& theURL)
-{
-	SexyApp::URLOpenSucceeded(theURL);
-	KillDialog(10);
-}
-
 // FUNCTION: GAME 0x40bdff
 // FUNCTION: GAME187 0x4d4716
 void WinDMApp::ModalClose()
@@ -147,6 +139,14 @@ bool WinDMApp::GetAutoInputMove(int& theX1, int& theY1, int& theX2, int& theY2)
 	theX2 = mBoard->mX + mBoard->GetColX(aMove[2]) + 25;
 	theY2 = mBoard->mY + mBoard->GetRowY(aMove[3]) + 25;
 	return true;
+}
+
+// Switch port: game commands for scripted test runs. "endgame" ends the current game (as running out of time does),
+// to reach the game-over screen and the high score dialog without playing a whole game.
+void WinDMApp::AutoInputCommand(const std::string& theCommand, const char* theArgs)
+{
+	if (theCommand == "endgame" && mBoard != NULL && mBoard->CanPlay())
+		mBoard->EndGame(50);
 }
 
 // FUNCTION: GAME 0x40bfad
@@ -224,36 +224,8 @@ void WinDMApp::WriteToRegistry()
 void WinDMApp::ReadFromRegistry()
 {
 	SexyApp::ReadFromRegistry();
-	mRegisterLink = "http://www.popcap.com/register.php?theGame=bejeweled&referid=" + mReferId;
 	RegistryReadString("LastScoreName", &mLastScoreName);
 	RegistryReadBoolean("NoPopLink", &mNoPopLink);
-}
-
-// FUNCTION: GAME 0x40ca85
-// FUNCTION: GAME187 0x4d4e97
-void WinDMApp::URLOpenFailed(const std::string& theURL)
-{
-	SexyApp::URLOpenFailed(theURL);
-	KillDialog(10);
-
-	std::string aString = GetString("URL_OPEN_ERROR1") + theURL + GetString("URL_OPEN_ERROR2");
-	CopyToClipboard(theURL);
-
-	Dialog* aDialog = NewDialog(11, true, GetString("OPEN_BROWSER"), aString, GetString("DIALOG_BUTTON_OK"), 3);
-	aDialog->Resize(100, 50, 440, aDialog->GetPreferredHeight(440));
-	AddDialog(11, aDialog);
-}
-
-// FUNCTION: GAME 0x40cc63
-// FUNCTION: GAME187 0x4d5077
-bool WinDMApp::OpenURL(const std::string& theURL, bool shutdownOnOpen)
-{
-	Dialog* aDialog = NewDialog(10, true, "", GetString("OPENING_BROWSER"), "", 0);
-	aDialog->mContentInsets = Insets(16, 26, 16, 16);
-	aDialog->Resize(180, 140, 280, 70);
-	AddDialog(10, aDialog);
-
-	return SexyApp::OpenURL(theURL, shutdownOnOpen);
 }
 
 // FUNCTION: GAME187 0x4d6399
@@ -492,6 +464,8 @@ void WinDMApp::Init()
 	DIALOG_OK_STRING = GetString("DIALOG_BUTTON_OK");
 	DIALOG_CANCEL_STRING = GetString("DIALOG_BUTTON_CANCEL");
 
+	SetSwitchStrings();
+
 	mImages = new DDImage*[36];
 	for (int i = 0; i < 36; i++)
 		mImages[i] = NULL;
@@ -605,15 +579,9 @@ void WinDMApp::ButtonDepress(int theId)
 			KillDialog(1);
 			break;
 		case 2:
-		{
-			OptionsDialog* aDialog = (OptionsDialog*)GetDialog(2);
-			bool wantWindowed = !aDialog->mWindowedCheckbox->IsChecked();
-			if (mIsWindowed != wantWindowed)
-				SwitchScreenMode(wantWindowed);
-			EnableCustomCursors(aDialog->mCustomCursorsCheckbox->IsChecked());
+			// (The PC applied the Fullscreen and Custom Cursors checkboxes here.)
 			KillDialog(2);
 			break;
-		}
 		case 3:
 			KillDialog(3);
 			SetGameMode(false, true);
@@ -621,31 +589,6 @@ void WinDMApp::ButtonDepress(int theId)
 		case 4:
 			KillDialog(4);
 			SetGameMode(true, true);
-			break;
-		case 5:
-		{
-			RegisterDialog* aDialog = (RegisterDialog*)GetDialog(5);
-			std::string aUserName = aDialog->mUserNameEdit->mString;
-			std::string aRegCode = aDialog->mRegCodeEdit->mString;
-			if (!Validate(aUserName, aRegCode))
-			{
-				ShowRegistrationInvalid();
-			}
-			else
-			{
-				mUserName = aUserName;
-				mRegCode = aRegCode;
-				mIsRegistered = true;
-				KillDialog(5);
-				mWidgetManager->MarkAllDirty();
-				if (mHighScoreWidget != NULL)
-					mHighScoreWidget->ShowScoreMessage();
-			}
-			break;
-		}
-		case 7:
-			DoRegisterDialog();
-			KillDialog(7);
 			break;
 		case 8:
 		{
@@ -655,27 +598,10 @@ void WinDMApp::ButtonDepress(int theId)
 			KillDialog(8);
 			break;
 		}
-		case 15:
-			KillDialog(15);
-			DoRegisterDialog();
-			break;
 		case 16:
 			KillDialog(16);
 			mBoard->LoadGame();
 			mBoard->DeleteSavedGame();
-			break;
-		case 17:
-			KillDialog(17);
-			CheckForUpdates();
-			break;
-		case 10018:
-			KillDialog(10018);
-			KillDialog(18);
-			OpenUpdateURL();
-			break;
-		case 20018:
-			KillDialog(20018);
-			KillDialog(18);
 			break;
 		default:
 			KillDialog(theId - 2000);
@@ -689,10 +615,6 @@ void WinDMApp::ButtonDepress(int theId)
 		case 16:
 			KillDialog(16);
 			mBoard->DeleteSavedGame();
-			break;
-		case 10018:
-			KillDialog(10018);
-			KillDialog(18);
 			break;
 		default:
 			KillDialog(theId - 3000);
@@ -732,38 +654,6 @@ void WinDMApp::ButtonDepress(int theId)
 		break;
 	}
 }
-// FUNCTION: GAME 0x40d301
-// FUNCTION: GAME187 0x4d5272
-void WinDMApp::DoRegisterDialog()
-{
-	if (mIsRegistered)
-	{
-		Dialog* aDialog = DoDialog(19, true, "Already Registered", "You have already registered Bejeweled!", "OK", 3);
-		aDialog->Move(aDialog->mX, aDialog->mY + 24);
-	}
-	else
-	{
-		RegisterDialog* aDialog = new RegisterDialog(this);
-		aDialog->Resize((mWidth - 348) / 2, 32, 348, aDialog->GetPreferredHeight(348));
-		AddDialog(5, aDialog);
-	}
-}
-
-// FUNCTION: GAME 0x40d413
-// FUNCTION: GAME187 0x4d5386
-void WinDMApp::ShowRegistrationInvalid()
-{
-	DoDialog(6, true, GetString("REGISTRATION_INVALID_DIALOG1"), GetString("REGISTRATION_INVALID_DIALOG2"), GetString("REGISTRATION_INVALID_DIALOG3"), 3);
-	PlaySample(7);
-}
-
-// FUNCTION: GAME 0x40d510
-// FUNCTION: GAME187 0x4d5486
-void WinDMApp::ShowHighScoreMessage(const std::string& theLines)
-{
-	DoDialog(7, true, GetString("HIGH_SCORE"), theLines, "", 1);
-}
-
 // FUNCTION: GAME 0x40d59a
 // FUNCTION: GAME187 0x4d550d
 void WinDMApp::ConfirmLoadGame()
@@ -773,13 +663,6 @@ void WinDMApp::ConfirmLoadGame()
 		Dialog* aDialog = DoDialog(16, true, GetString("CONFIRM_LOAD_DIALOG1"), GetString("CONFIRM_LOAD_DIALOG2"), "", 1);
 		aDialog->Resize(234, 50, 348, aDialog->GetPreferredHeight(348));
 	}
-}
-
-// FUNCTION: GAME 0x40d69e
-// FUNCTION: GAME187 0x4d68da
-void WinDMApp::CheckForUpdates()
-{
-	// No update server to ask.
 }
 
 // FUNCTION: GAME 0x40d807
@@ -842,46 +725,6 @@ void WinDMApp::ShowFullInstructions()
 	AddDialog(12, aDialog);
 }
 
-// FUNCTION: GAME 0x40de0a
-// FUNCTION: GAME187 0x4d5bef
-void WinDMApp::ShowColorDepthExplanation()
-{
-	DoDialog(12, true, GetString("COLOR_DEPTH_EXPLANATION1"), GetString("COLOR_DEPTH_EXPLANATION2"), GetString("DIALOG_BUTTON_OK"), 3);
-}
-
-// FUNCTION: GAME 0x40def7
-// FUNCTION: GAME187 0x4d5cdf
-void WinDMApp::ShowRegisterNag()
-{
-	char aBuffer[256];
-	if (mIsDiamondMine)
-		sprintf(aBuffer, GetString("YOU_HAVE_PLAYED_DIAMOND_MINE_D_TIMES").c_str(), mTimesPlayed);
-	else
-		sprintf(aBuffer, GetString("YOU_HAVE_PLAYED_BEJEWELLED_D_TIMES").c_str(), mTimesPlayed);
-
-	std::string aLines = aBuffer;
-	if (mTimesPlayed >= 40)
-	{
-		if (mIsDiamondMine)
-			aLines += GetString("YOU_ARE_A_DIAMOND_MINE_AHOLIC");
-		else
-			aLines += GetString("YOU_ARE_A_BEJEWELAHOLIC");
-	}
-	else if (mTimesPlayed >= 30)
-	{
-		aLines += GetString("LOOKS_LIKE_YOU_ARE_ADDICTED");
-	}
-	else if (mTimesPlayed >= 25)
-	{
-		aLines += GetString("ARE_YOU_GETTING_HOOKED");
-	}
-	aLines += GetString("LOADING_NAG");
-
-	Dialog* aDialog = NewDialog(15, true, GetString("REGISTER_NOW"), aLines, "", 1);
-	aDialog->Resize(234, 50, 348, aDialog->GetPreferredHeight(348));
-	AddDialog(15, aDialog);
-}
-
 // FUNCTION: GAME 0x40e5e7
 // FUNCTION: GAME187 0x4d6e71
 ButtonWidget* WinDMApp::MakeButton(int theId, const Rect& theRect, int theOverImage, int theDownImage)
@@ -920,3 +763,127 @@ void WinDMApp::FinishLoading()
 	ConfirmLoadGame();
 }
 
+// Switch port: the PC text talks about clicking and keys. The property files come from the game install as they are,
+// so the console wording is put over them here.
+void WinDMApp::SetSwitchStrings()
+{
+	SetString("CLICK_HERE_TO_PLAY", L"TAP HERE OR PRESS A TO PLAY!");
+	SetString("CLICK_HERE_TO_CONTINUE", L"Tap or Press + to Continue!");
+	SetString("HSWIDGET_CLICK_HERE_TO_PLAY_AGAIN", L"PRESS + TO PLAY AGAIN");
+	SetString("HSWIDGET_TIP0", L"TIP- You can drag a gem instead of tapping twice");
+	SetString("HSWIDGET_TIP6", L"TIP- You can drag a gem to swap it with another");
+	SetString("HSWIDGET_TIP7", L"TIP- Press + to pause the game in Timetrial mode");
+	SetString("HSWIDGET_TIP_DEFAULT", L"TIP- Stuck? Press X for a hint (it costs points)");
+
+	std::string aText = GetString("FULL_INSTRUCTIONS2");
+	size_t aPos = aText.find("Press any key to pause the game.");
+	if (aPos != std::string::npos)
+		aText.replace(aPos, 32, "Press + to pause the game.");
+	aPos = aText.find("CONTROLS - ");
+	if (aPos != std::string::npos)
+	{
+		aText.erase(aPos);
+		aText += "CONTROLS - Tap a gem, then tap an adjacent gem to swap them, or just drag a gem onto its "
+			"neighbor. With a controller, move with the left stick or the d-pad (a gem at a time) and press A. "
+			"X gives a hint, + pauses, - opens the options and B backs out of a dialog.";
+	}
+	SetString("FULL_INSTRUCTIONS2", StringToWString(aText));
+}
+
+// Switch port: controller shortcuts. Returning true takes the press (and its release) away from the framework's
+// default handling (A clicks, B is Escape, + is a key press, which pauses the board).
+bool WinDMApp::ControllerButton(int theButton)
+{
+	if (mTitleScreen != NULL)
+	{
+		if ((theButton == PAD_A || theButton == PAD_PLUS) && mTitleScreen->CanStart() && mDialogList.empty())
+		{
+			PlaySample(12);
+			FinishLoading();
+			return true;
+		}
+		return false;
+	}
+
+	if (!mDialogList.empty())
+	{
+		// B answers the top dialog: No where there is one, else its only button. Continue-your-saved-game is left
+		// alone, since No there deletes the save. - closes the options, as it opened them.
+		Dialog* aDialog = mDialogList.back();
+		if (theButton != PAD_B && !(theButton == PAD_MINUS && aDialog->mId == 2))
+			return false;
+		if (aDialog->mId == 16)
+			return true;
+		DialogButton* aButton = (aDialog->mNoButton != NULL) ? aDialog->mNoButton : aDialog->mYesButton;
+		if (aButton == NULL)
+			return false;
+		aDialog->ButtonPress(aButton->mId);
+		aDialog->ButtonDepress(aButton->mId);
+		return true;
+	}
+
+	if (mBoard == NULL)
+		return false;
+
+	if (mHighScoreWidget != NULL)
+	{
+		// Game over: + plays again, like the link.
+		if (theButton == PAD_PLUS)
+		{
+			PlaySample(12);
+			NewBoard();
+			return true;
+		}
+		if (theButton == PAD_MINUS)
+		{
+			ButtonPress(13);
+			ButtonDepress(13);
+			return true;
+		}
+		return false;
+	}
+
+	switch (theButton)
+	{
+	case PAD_X:
+		// The hint orb.
+		ButtonPress(15);
+		ButtonDepress(15);
+		return true;
+	case PAD_MINUS:
+		ButtonPress(13);
+		ButtonDepress(13);
+		return true;
+	}
+
+	return false;
+}
+
+// Switch port: the d-pad moves the pointer a gem at a time on the board. Off the board (or past its edge) it glides.
+bool WinDMApp::StepPointer(int& theGameX, int& theGameY, int theDX, int theDY)
+{
+	if (mBoard == NULL || mTitleScreen != NULL || mHighScoreWidget != NULL || !mDialogList.empty())
+		return false;
+
+	int aCol = -1, aRow = -1;
+	for (int i = 0; i < 8; i++)
+	{
+		int aX = mBoard->mX + mBoard->GetColX(i);
+		int aY = mBoard->mY + mBoard->GetRowY(i);
+		if (theGameX >= aX && theGameX < aX + 51)
+			aCol = i;
+		if (theGameY >= aY && theGameY < aY + 51)
+			aRow = i;
+	}
+	if (aCol < 0 || aRow < 0)
+		return false;
+
+	aCol += theDX;
+	aRow += theDY;
+	if (aCol < 0 || aCol >= 8 || aRow < 0 || aRow >= 8)
+		return false;
+
+	theGameX = mBoard->mX + mBoard->GetColX(aCol) + 25;
+	theGameY = mBoard->mY + mBoard->GetRowY(aRow) + 25;
+	return true;
+}

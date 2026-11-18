@@ -17,6 +17,8 @@
 #include "DDImage.h"
 #include "MemoryImage.h"
 #include "Dialog.h"
+#include "DialogButton.h"
+#include <algorithm>
 #include "../ImageLib/ImageLib.h"
 #include "Rect.h"
 #include "PropertiesParser.h"
@@ -172,6 +174,12 @@ SexyAppBase::SexyAppBase()
 	mPadPointerY = 0;
 	mPadButtonDown = false;
 	mPadLastTick = 0;
+	mPadConsumed = 0;
+	mDPadX = 0;
+	mDPadY = 0;
+	mDPadNextStep = 0;
+	mAutoDPad = 0;
+	mPointerToDialog = NULL;
 	mAutoInputIndex = 0;
 	mAutoInputNext = 0;
 	mAutoStickX = 0;
@@ -867,6 +875,8 @@ void SexyAppBase::AddDialog(int theDialogId, Dialog* theDialog)
 
 	mDialogMap.insert(DialogMap::value_type(theDialogId, theDialog));
 	mDialogList.push_back(theDialog);
+	// Switch port: placed once the caller has finished positioning it (see ProcessSDLEvents).
+	mPointerToDialog = theDialog;
 
 	mWidgetManager->AddWidget(theDialog);
 	if (theDialog->IsModal())
@@ -2636,6 +2646,20 @@ void SexyAppBase::ProcessSDLEvents()
 			ClearUpdateBacklog();
 	}
 
+	// A dialog with one button (OK, Done) opened while the controller is in use: start the pointer on that button.
+	// Not for two-button dialogs, where either answer may lose something.
+	if (mPointerToDialog != NULL)
+	{
+		Dialog* aDialog = mPointerToDialog;
+		mPointerToDialog = NULL;
+		if (mPointerVisible && std::find(mDialogList.begin(), mDialogList.end(), aDialog) != mDialogList.end() &&
+			aDialog->mYesButton != NULL && aDialog->mNoButton == NULL)
+		{
+			ButtonWidget* aButton = aDialog->mYesButton;
+			MovePointerToGame(aButton->mX + aButton->mWidth / 2, aButton->mY + aButton->mHeight / 2);
+		}
+	}
+
 	DWORD aTimeNow = GetTickCount();
 	if (!mShutdown)
 		UpdateControllerPointer(aTimeNow - mPadLastTick);
@@ -2678,13 +2702,6 @@ void SexyAppBase::MovePointer(int theX, int theY, bool fromController)
 	PushMessage(WM_MOUSEMOVE, 0, MAKELONG(theX, theY));
 }
 
-// Joystick button numbers on SDL's Switch driver (Nintendo labels).
-enum
-{
-	PAD_A = 0, PAD_B = 1, PAD_X = 2, PAD_Y = 3, PAD_LSTICK = 4, PAD_RSTICK = 5, PAD_L = 6, PAD_R = 7, PAD_ZL = 8,
-	PAD_ZR = 9, PAD_PLUS = 10, PAD_MINUS = 11, PAD_LEFT = 12, PAD_UP = 13, PAD_RIGHT = 14, PAD_DOWN = 15
-};
-
 void SexyAppBase::OpenControllers()
 {
 	int aCount = std::min(SDL_NumJoysticks(), (int)(sizeof(mGameControllers) / sizeof(mGameControllers[0])));
@@ -2704,8 +2721,35 @@ void SexyAppBase::PushKeyPress(int theKeyCode, int theChar)
 	PushMessage(WM_KEYUP, theKeyCode, 0);
 }
 
+// Moves the controller pointer to a point in game pixels and shows it.
+void SexyAppBase::MovePointerToGame(int theGameX, int theGameY)
+{
+	Rect& aRect = mDDInterface->mPresentationRect;
+	if (aRect.mWidth <= 0 || aRect.mHeight <= 0)
+		return;
+	mPadPointerX = aRect.mX + (theGameX + 0.5) * aRect.mWidth / mWidth;
+	mPadPointerY = aRect.mY + (theGameY + 0.5) * aRect.mHeight / mHeight;
+	MovePointer((int)mPadPointerX, (int)mPadPointerY, true);
+}
+
 void SexyAppBase::HandleControllerButton(int theButton, bool isDown)
 {
+	// The game's shortcuts come first; a press it takes keeps its release away from the default handling too.
+	if (theButton >= 0 && theButton < 32)
+	{
+		int aBit = 1 << theButton;
+		if (!isDown && (mPadConsumed & aBit))
+		{
+			mPadConsumed &= ~aBit;
+			return;
+		}
+		if (isDown && !mShutdown && ControllerButton(theButton))
+		{
+			mPadConsumed |= aBit;
+			return;
+		}
+	}
+
 	switch (theButton)
 	{
 	case PAD_A:
@@ -2741,7 +2785,9 @@ void SexyAppBase::HandleControllerButton(int theButton, bool isDown)
 	}
 }
 
-// Left stick and d-pad steer the pointer, faster the further the stick is pushed.
+// The left stick steers the pointer, faster the further it is pushed. The d-pad steps it where the game has steps
+// (StepPointer: a gem at a time on the board), first on the press and then repeating while held, and glides it
+// elsewhere.
 void SexyAppBase::UpdateControllerPointer(DWORD theElapsed)
 {
 	if (theElapsed > 100)
@@ -2749,6 +2795,7 @@ void SexyAppBase::UpdateControllerPointer(DWORD theElapsed)
 
 	const int aDeadZone = 6000;
 	double aDX = 0, aDY = 0;
+	int aPadX = 0, aPadY = 0;
 	for (int i = 0; i < (int)(sizeof(mGameControllers) / sizeof(mGameControllers[0])); i++)
 	{
 		SDL_Joystick* aJoy = (SDL_Joystick*)mGameControllers[i];
@@ -2767,20 +2814,28 @@ void SexyAppBase::UpdateControllerPointer(DWORD theElapsed)
 			(anAxis == 0 ? aDX : aDY) += (aValue < 0) ? -aSpeed : aSpeed;
 		}
 
-		if (SDL_JoystickGetButton(aJoy, PAD_LEFT))	aDX -= 0.4;
-		if (SDL_JoystickGetButton(aJoy, PAD_RIGHT))	aDX += 0.4;
-		if (SDL_JoystickGetButton(aJoy, PAD_UP))	aDY -= 0.4;
-		if (SDL_JoystickGetButton(aJoy, PAD_DOWN))	aDY += 0.4;
+		if (SDL_JoystickGetButton(aJoy, PAD_LEFT))	aPadX = -1;
+		if (SDL_JoystickGetButton(aJoy, PAD_RIGHT))	aPadX = 1;
+		if (SDL_JoystickGetButton(aJoy, PAD_UP))	aPadY = -1;
+		if (SDL_JoystickGetButton(aJoy, PAD_DOWN))	aPadY = 1;
 	}
+	if (mAutoDPad & (1 << PAD_LEFT))	aPadX = -1;
+	if (mAutoDPad & (1 << PAD_RIGHT))	aPadX = 1;
+	if (mAutoDPad & (1 << PAD_UP))		aPadY = -1;
+	if (mAutoDPad & (1 << PAD_DOWN))	aPadY = 1;
 
-	if ((int)(mAutoStickUntil - GetTickCount()) > 0)
+	DWORD aNow = GetTickCount();
+	if ((int)(mAutoStickUntil - aNow) > 0)
 	{
 		aDX += mAutoStickX;
 		aDY += mAutoStickY;
 	}
 
-	if (aDX == 0 && aDY == 0)
+	if (aDX == 0 && aDY == 0 && aPadX == 0 && aPadY == 0)
+	{
+		mDPadX = mDPadY = 0;
 		return;
+	}
 
 	if (!mPointerVisible)
 	{
@@ -2793,6 +2848,42 @@ void SexyAppBase::UpdateControllerPointer(DWORD theElapsed)
 		}
 		mPadPointerX = mPointerX;
 		mPadPointerY = mPointerY;
+	}
+
+	// D-pad: a step on the press, then after 300 ms one every 110 ms while held.
+	bool isNewDirection = (aPadX != mDPadX || aPadY != mDPadY);
+	mDPadX = aPadX;
+	mDPadY = aPadY;
+	if (aPadX != 0 || aPadY != 0)
+	{
+		if (isNewDirection || (int)(aNow - mDPadNextStep) >= 0)
+		{
+			int aGameX = (int)mPadPointerX, aGameY = (int)mPadPointerY;
+			mDDInterface->RemapMouse(aGameX, aGameY);
+			if (StepPointer(aGameX, aGameY, aPadX, aPadY))
+			{
+				mDPadNextStep = aNow + (isNewDirection ? 300 : 110);
+				MovePointerToGame(aGameX, aGameY);
+				return;
+			}
+		}
+		else
+		{
+			// Waiting to repeat a step: hold still unless there's nothing to step on here.
+			int aGameX = (int)mPadPointerX, aGameY = (int)mPadPointerY;
+			mDDInterface->RemapMouse(aGameX, aGameY);
+			int aStepX = aGameX, aStepY = aGameY;
+			if (StepPointer(aStepX, aStepY, aPadX, aPadY))
+			{
+				if (!mPointerVisible)
+					MovePointer((int)mPadPointerX, (int)mPadPointerY, true);
+				return;
+			}
+		}
+
+		// Nothing to step to: glide like the stick.
+		aDX += aPadX * 0.4;
+		aDY += aPadY * 0.4;
 	}
 
 	// Full deflection crosses the picture in about a second and a half.
@@ -2812,7 +2903,8 @@ void SexyAppBase::UpdateControllerPointer(DWORD theElapsed)
 // after a delay in milliseconds from the previous one; positions are in game pixels (640x480):
 //   <ms> tap <x> <y>            touch down and up
 //   <ms> down|move|up <x> <y>   touch down, drag, lift
-//   <ms> pad <button> down|up   joystick button number (0 = A, 1 = B, 10 = +, ...)
+//   <ms> pad <button> down|up   joystick button number (0 = A, 1 = B, 2 = X, 10 = +, 11 = -, 12-15 = d-pad
+//                               left/up/right/down, held until its "up")
 //   <ms> stick <dx> <dy> <ms>   hold the left stick at dx,dy (-1..1) for a while
 //   <ms> hint | hintdrag        make the game's hinted move by two taps or by a drag (GetAutoInputMove)
 //   <ms> shot                   screenshot to <app data>/_screenshots/
@@ -2820,6 +2912,7 @@ void SexyAppBase::UpdateControllerPointer(DWORD theElapsed)
 //   <ms> text <string>          type the rest of the line as characters (WM_CHAR), e.g. a high score name
 //   <ms> focus <0|1>            lose/regain focus as the HOME menu would (SwitchPlatform::SimulateFocus)
 //   <ms> quit
+//   <ms> <other> ...            passed to the game's AutoInputCommand (Bejeweled: endgame)
 // Lines starting with # are ignored.
 void SexyAppBase::LoadAutoInput()
 {
@@ -2909,7 +3002,13 @@ void SexyAppBase::ProcessAutoInput()
 		{
 			int aButton = 0;
 			if (sscanf(anArgs, "%d %15s", &aButton, aWord) == 2)
-				HandleControllerButton(aButton, strcmp(aWord, "down") == 0);
+			{
+				bool isDown = strcmp(aWord, "down") == 0;
+				// The d-pad is read as held state, not as presses.
+				if (aButton >= PAD_LEFT && aButton <= PAD_DOWN)
+					mAutoDPad = isDown ? (mAutoDPad | (1 << aButton)) : (mAutoDPad & ~(1 << aButton));
+				HandleControllerButton(aButton, isDown);
+			}
 		}
 		else if (aCommand == "stick")
 		{
@@ -2965,6 +3064,8 @@ void SexyAppBase::ProcessAutoInput()
 			PushMessage(WM_CLOSE, 0, 0);
 			CloseRequestAsync();
 		}
+		else
+			AutoInputCommand(aCommand, anArgs);
 	}
 }
 

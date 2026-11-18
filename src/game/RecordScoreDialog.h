@@ -33,12 +33,16 @@ public:
 	virtual void Draw(Graphics* g);
 	virtual int GetPreferredHeight(int theWidth);
 	virtual void EditWidgetText(int theId, const std::string& theString);
+	virtual void Update();
 
 	void DrawEditBox(Graphics* g, const Rect& theRect);
+	// Switch port: asks for the name with the system keyboard and records it when the player presses OK.
+	void OpenKeyboard();
 
 	// 0x110: EditListener vtable
 	WinDMApp* mApp;            // 0x114
 	EditWidget* mNameEdit;     // 0x118
+	bool mKeyboardShown;       // Switch port: the keyboard has come up on its own once
 };
 
 }

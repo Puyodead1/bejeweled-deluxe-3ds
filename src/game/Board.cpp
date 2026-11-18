@@ -872,8 +872,7 @@ void Board::UpdateLevelTransition()
 		m_unk0x60 = m_unk0x5c + 1;
 		m_unk0x2d4 = 200;
 		FillBoard();
-		if ((!mApp->mIsRegistered) && (mApp->mTimesPlayed >= 15) && (Rand() % 5 == 0))
-			mApp->ShowRegisterNag();
+		// (The trial's register nag rolled here; the Switch port is the full game.)
 	}
 }
 
@@ -1957,9 +1956,6 @@ void Board::Update()
 		m_unk0x260 = aBarImage;
 		MarkDirty();
 	}
-
-	if ((mUpdateCnt == 149) && (!mApp->mIsRegistered) && (mApp->mTimesPlayed >= 20))
-		mApp->ShowRegisterNag();
 
 	if (mUpdateCnt == 150)
 	{

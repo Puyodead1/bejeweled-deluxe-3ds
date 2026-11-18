@@ -38,9 +38,6 @@ public:
 	virtual void WriteToRegistry();   // vtable+0x44
 	virtual void ReadFromRegistry();  // vtable+0x48
 	virtual Dialog* NewDialog(int theDialogId, bool isModal, const std::string& theDialogHeader, const std::string& theDialogLines, const std::string& theDialogFooter, int theButtonMode); // vtable+0x4c
-	virtual void URLOpenFailed(const std::string& theURL); // vtable+0x5c
-	virtual void URLOpenSucceeded(const std::string& theURL); // vtable+0x60
-	virtual bool OpenURL(const std::string& theURL, bool shutdownOnOpen); // vtable+0x64
 	virtual std::string GetGameSEHInfo(); // vtable+0x7c
 	virtual void Shutdown();          // vtable+0x80
 	// 1.87 moved this into PreDisplayHook and leaves SexyApp::InitPropertiesHook alone, which loads the
@@ -53,6 +50,10 @@ public:
 	virtual void GotFocus();        // vtable+0xf0
 	virtual void LostFocus();        // vtable+0xf4
 	virtual bool GetAutoInputMove(int& theX1, int& theY1, int& theX2, int& theY2); // Switch port: scripted testing
+	virtual void AutoInputCommand(const std::string& theCommand, const char* theArgs); // Switch port: testing
+	virtual bool ControllerButton(int theButton); // Switch port: controller shortcuts
+	virtual bool StepPointer(int& theGameX, int& theGameY, int theDX, int theDY); // Switch port: d-pad on the board
+	void SetSwitchStrings();          // Switch port: console wording over the PC strings
 
 	// Names below are guesses from what the code does.
 	void NewBoard();
@@ -62,19 +63,13 @@ public:
 	void ShowOptionsDialog();
 	void ShowHighScoreDialog();
 	bool LoadGameImage(int theIndex);
-	void DoRegisterDialog();
-	void ShowRegistrationInvalid();
-	void CheckForUpdates();
 	void ConfirmNewGame();
 	void ConfirmNormalMode();
 	void ConfirmTimedMode();
 	void ConfirmQuit();
-	void ShowHighScoreMessage(const std::string& theLines);
 	void ConfirmLoadGame();
 	void ShowInstructions();
 	void ShowFullInstructions();
-	void ShowColorDepthExplanation();
-	void ShowRegisterNag();
 	ButtonWidget* MakeButton(int theId, const Rect& theRect, int theOverImage, int theDownImage);
 	void FinishLoading();
 

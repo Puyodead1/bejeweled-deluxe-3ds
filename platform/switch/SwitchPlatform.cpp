@@ -258,6 +258,34 @@ void SwitchPlatform::RecoverFiles(const std::string& theDir)
 	}
 }
 
+bool SwitchPlatform::ShowKeyboard(const std::string& theHeader, const std::string& theInitial, int theMaxChars, std::string& theResult)
+{
+	SwkbdConfig aConfig;
+	if (R_FAILED(swkbdCreate(&aConfig, 0)))
+		return false;
+
+	swkbdConfigMakePresetDefault(&aConfig);
+	swkbdConfigSetHeaderText(&aConfig, theHeader.c_str());
+	swkbdConfigSetGuideText(&aConfig, theHeader.c_str());
+	swkbdConfigSetInitialText(&aConfig, theInitial.c_str());
+	swkbdConfigSetStringLenMax(&aConfig, theMaxChars);
+
+	char aText[256] = {0};
+	Result aResult = swkbdShow(&aConfig, aText, sizeof(aText));
+	swkbdClose(&aConfig);
+	fprintf(stderr, "swkbd: %s '%s'\n", R_SUCCEEDED(aResult) ? "ok" : "cancelled", aText);
+	if (R_FAILED(aResult))
+		return false;	// cancelled (or the applet couldn't start)
+
+	theResult.clear();
+	for (const char* p = aText; *p != 0; p++)
+	{
+		if (*p >= 0x20 && *p <= 0x7E)
+			theResult += *p;
+	}
+	return true;
+}
+
 void SwitchPlatform::ShowError(const std::string& theTitle, const std::string& theText)
 {
 	fprintf(stderr, "[%s] %s\n", theTitle.c_str(), theText.c_str());

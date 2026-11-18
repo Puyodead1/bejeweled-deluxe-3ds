@@ -480,47 +480,24 @@ void HighScoreWidget::DoShowScoreMessage()
 	int aRank = GetRank(aMode, aScore);
 	char aRankStr[4];
 
-	if (!mApp->mIsRegistered)
+	// (A trial build offered to register here instead of recording the score.)
+	if (isTodayBest)
 	{
-		if (isTodayBest)
-		{
-			if (aRank > 0)
-			{
-				sprintf(aRankStr, "%d", aRank);
-				aMessage = "You got the highest score of\nthe day and " + (aRankStr + GetOrdinal(aRank)) + " place\nof all time!\n\nWould you like to register so\nyou can record your score?";
-			}
-			else
-				aMessage = "You got the highest score\nof the day!\n\nWould you like to register so\nyou can record your score?";
-
-			mApp->ShowHighScoreMessage(aMessage);
-		}
-		else if (aRank > 0)
+		if (aRank > 0)
 		{
 			sprintf(aRankStr, "%d", aRank);
-			aMessage = "You got " + (aRankStr + GetOrdinal(aRank)) + " place of all time!\n\nWould you like to register so\nyou can record your score?";
-			mApp->ShowHighScoreMessage(aMessage);
+			aMessage = "You got the highest score of\nthe day and " + (aRankStr + GetOrdinal(aRank)) + " place\nof all time!";
 		}
+		else
+			aMessage = "You got the highest score\nof the day!";
+
+		mApp->ShowRecordScoreDialog(aMessage);
 	}
-	else
+	else if (aRank > 0)
 	{
-		if (isTodayBest)
-		{
-			if (aRank > 0)
-			{
-				sprintf(aRankStr, "%d", aRank);
-				aMessage = "You got the highest score of\nthe day and " + (aRankStr + GetOrdinal(aRank)) + " place\nof all time!";
-			}
-			else
-				aMessage = "You got the highest score\nof the day!";
-
-			mApp->ShowRecordScoreDialog(aMessage);
-		}
-		else if (aRank > 0)
-		{
-			sprintf(aRankStr, "%d", aRank);
-			aMessage = "You got " + (aRankStr + GetOrdinal(aRank)) + " place of all time!";
-			mApp->ShowRecordScoreDialog(aMessage);
-		}
+		sprintf(aRankStr, "%d", aRank);
+		aMessage = "You got " + (aRankStr + GetOrdinal(aRank)) + " place of all time!";
+		mApp->ShowRecordScoreDialog(aMessage);
 	}
 }
 // FUNCTION: GAME 0x40853d

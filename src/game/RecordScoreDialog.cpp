@@ -5,8 +5,31 @@
 #include "SexyAppFramework/Graphics.h"
 #include "SexyAppFramework/Color.h"
 #include "SexyAppFramework/Rect.h"
+#include "SwitchPlatform.h"
 
 using namespace Sexy;
+
+namespace
+{
+
+// Switch port: a tap on the name box (or A with the pointer on it) brings up the system keyboard; there's no
+// physical one to type with.
+class NameEditWidget : public EditWidget
+{
+public:
+	NameEditWidget(RecordScoreDialog* theDialog) : EditWidget(0, theDialog), mDialog(theDialog) {}
+
+	virtual void MouseUp(int x, int y, int theBtnNum, int theClickCount)
+	{
+		EditWidget::MouseUp(x, y, theBtnNum, theClickCount);
+		if (mIsOver)
+			mDialog->OpenKeyboard();
+	}
+
+	RecordScoreDialog* mDialog;
+};
+
+}
 
 // GLOBAL: GAME 0x4f1238
 int gRecordScoreEditColors[][4] = {{0, 0, 0, 0}, {0, 0, 0, 0}, {240, 240, 255, 255}, {255, 255, 255, 255}, {0, 0, 0, 255}};
@@ -57,6 +80,32 @@ void RecordScoreDialog::EditWidgetText(int theId, const std::string& theString)
 	mApp->ButtonDepress(mId + 2000);
 }
 
+void RecordScoreDialog::Update()
+{
+	Dialog::Update();
+
+	// Let the dialog be seen for a moment, then ask for the name.
+	if (!mKeyboardShown && mUpdateCnt >= 30 && mWidgetManager != NULL)
+	{
+		mKeyboardShown = true;
+		OpenKeyboard();
+	}
+}
+
+void RecordScoreDialog::OpenKeyboard()
+{
+	mKeyboardShown = true;
+
+	std::string aName;
+	if (!SwitchPlatform::ShowKeyboard(mApp->GetString("RECORDSCOREDLG_ENTER_YOUR_NAME"), mNameEdit->mString, 12, aName))
+		return;	// cancelled: the dialog stays, for another try or Cancel
+
+	mNameEdit->SetText(aName);
+	mNameEdit->EnforceMaxPixels();
+	mNameEdit->SetText(mNameEdit->mString);	// puts the cursor back on the end after any trim
+	mApp->ButtonDepress(mId + 2000);
+}
+
 // FUNCTION: GAME 0x409acd
 void RecordScoreDialog::DrawEditBox(Graphics* g, const Rect& theRect)
 {
@@ -75,12 +124,13 @@ RecordScoreDialog::RecordScoreDialog(WinDMApp* theApp, const std::string& theLin
 	: Dialog(theApp->mImages[10], theApp->mImages[11], 8, true, theApp->GetString("RECORDSCOREDLG_HIGH_SCORE"), theLines, "", 2)
 {
 	mApp = theApp;
+	mKeyboardShown = false;
 
 	SetButtonFont(theApp->m_unk0x690);
 	SetHeaderFont(mApp->m_unk0x68c);
 	SetLinesFont(mApp->m_unk0x690);
 
-	mNameEdit = new EditWidget(0, this);
+	mNameEdit = new NameEditWidget(this);
 	mNameEdit->SetFont(mApp->m_unk0x690);
 	mNameEdit->SetColors(gRecordScoreEditColors, 5);
 	mNameEdit->mMaxPixels = 104;

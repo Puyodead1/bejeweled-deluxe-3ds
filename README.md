@@ -39,6 +39,13 @@ See [PLAN.md](PLAN.md) for the port plan and status.
 CMake. Game data is packed into the `.nro`'s RomFS with lowercase paths (the Switch file system is case-sensitive and
 the game's own paths aren't consistent).
 
+## Controls
+
+Touch works like the mouse did: tap a gem and then its neighbour, or drag one onto the other. With a controller the
+left stick moves a pointer and the d-pad steps it a gem at a time; A (or R/ZR) clicks, X shows a hint, + pauses
+(and plays again after a game), - opens Options and B backs out of a dialog. High score names are typed on the
+system keyboard.
+
 ## Running in Eden
 
 ```powershell
@@ -56,7 +63,7 @@ seems to hang. `tools\gdb_eden.ps1` runs the game under gdb through Eden's gdbst
 
 For scripted runs, `-AutoInput script.txt` installs a script of timed taps, drags, controller buttons, stick moves,
 "make the hinted move", typed text (`text <string>`), losing and regaining focus as the HOME menu would (`focus 0`,
-`focus 1`), in-game screenshots and audio capture (`rec <ms>` writes the mixed output to `_capture.raw`, 16-bit stereo
+`focus 1`), ending the game at once (`endgame`, for the game-over screen and high score dialog), in-game screenshots and audio capture (`rec <ms>` writes the mixed output to `_capture.raw`, 16-bit stereo
 48 kHz; format in `SexyAppBase::LoadAutoInput`). `-Shots dir` collects the screenshots afterwards, `-Fresh` deletes the
 saved game first so the run doesn't open on the resume dialog, and `-Handheld` runs in handheld mode (Eden defaults to
 docked):

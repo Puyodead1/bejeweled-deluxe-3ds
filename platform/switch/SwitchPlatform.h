@@ -36,6 +36,10 @@ namespace SwitchPlatform
 	// main thread from running at all. Returns false if no thread could be started. Exit() waits for it.
 	bool		StartWorkerThread(void (*theProc)(void*), void* theArg, size_t theStackSize);
 
+	// Shows the system software keyboard (blocking) with theInitial filled in, at most theMaxChars long. Returns false if
+	// the player cancelled. The result keeps only printable ASCII, the characters the game's fonts have.
+	bool		ShowKeyboard(const std::string& theHeader, const std::string& theInitial, int theMaxChars, std::string& theResult);
+
 	// Shows the system error applet with a title line and details; returns when the user dismisses it.
 	void		ShowError(const std::string& theTitle, const std::string& theText);
 

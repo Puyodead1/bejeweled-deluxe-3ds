@@ -22,7 +22,7 @@ src/game  ->  SexyAppBase / SexyApp  ->  platform/switch
 The class names `DDInterface`/`DDImage` stay, so game code needs few edits.
 
 Input: touchscreen = mouse (tap to select, drag to swap); stick/D-pad moves a cursor; A = click, B = back,
-+ = pause/options. Trial/registration UI is removed: the port runs as the full game.
++ = pause, - = options, X = hint. Trial/registration UI is removed: the port runs as the full game.
 
 ## Libraries
 
@@ -116,3 +116,22 @@ one: either rename/drop the vendored copy and use 1.3.1 (libpng 1.0.5 only uses 
    Still to check on hardware: HOME-menu close (saves) and suspend/resume, dock/undock while running, fps, audio
    queue length and feel.
 7. **Polish.** Remove trial/register/web UI, controller prompts where needed, cursor feel.
+   Done (checked in Eden):
+   - Trial and web pieces gone: `RegisterDialog`, the register nags (`Board`, title screen, game-over message), the
+     title screen's trial delay and register link, `OpenURL` and its "opening browser" dialogs, the update check.
+     Options keeps the volume sliders, Help and High Scores; the Register button, the partner link ("Play More Great
+     Games!"), Check for Updates, and the Fullscreen and Custom Cursors checkboxes are gone.
+   - Controller shortcuts (`WinDMApp::ControllerButton`, ahead of the framework's defaults): A or + on the title
+     starts; X is the hint orb; - opens Options (and closes it); + pauses, and plays again on the game-over screen;
+     B answers the top dialog with No, or its only button (never on "continue your saved game?", where No deletes
+     the save). A one-button dialog brings the pointer to its button.
+   - Cursor: the d-pad moves the pointer a gem at a time on the board (`StepPointer`), first on the press, then
+     every 110 ms after 300 ms held; off the board it glides as before. The stick is unchanged.
+   - Wording: the PC strings that say click or "any key" are replaced in code after the properties load
+     (`WinDMApp::SetSwitchStrings`), since the property files are copied from the install unchanged: the title's
+     play link, "Tap or Press + to Continue!", "PRESS + TO PLAY AGAIN", three tips, the pause and controls parts of
+     the instructions. The hint orb's hover picture has "CLICK HERE FOR A HINT" painted in; left as it is.
+   - Name entry: the high score dialog opens the system keyboard (`SwitchPlatform::ShowKeyboard`) a moment
+     after it appears and again on a tap on the name box; OK records the name (printable ASCII only, the fonts have
+     nothing else), cancel leaves the dialog. eden-cli's keyboard answers "Eden" at once; the real one is for the
+     console. Autoinput `endgame` ends a game to get there quickly.

@@ -12,7 +12,7 @@ src/game  ->  SexyAppBase / SexyApp  ->  platform/switch
                                           |- DDInterface   screen = 640x480 MemoryImage, uploaded each frame to an SDL
                                           |                streaming texture and scaled (letterboxed) to 1280x720/1920x1080
                                           |- DDImage       MemoryImage-only (no DirectDraw surface)
-                                          |- SoundManager  software mixer on SDL audio: Ogg (Tremor) + WAV, volume/pan/pitch
+                                          |- SoundManager  software mixer on audren (SwitchAudio): Ogg (Tremor) + WAV, volume/pan/pitch
                                           |- MusicInterface libmodplug for the three .s3m songs, mixed into the same stream
                                           |- registry      key/value file in sdmc:/switch/Bejeweled/
                                           |- threads/locks SDL_Thread / SDL_mutex
@@ -94,6 +94,24 @@ one: either rename/drop the vendored copy and use 1.3.1 (libpng 1.0.5 only uses 
    name (new autoinput `text` command) written with PC-compatible checksums. Not testable in Eden: the HOME-menu
    close itself; check on hardware. The seeded scores are whatever the packed install's `hiscores.dat` holds.
 6. **Hardware pass.** Docked/handheld resolution, home-menu suspend (pause audio), applet exit, performance (60 fps).
-   Audio latency: on hardware audren runs 5 ms frames, so try 512 frames, or our own audrv backend with several
-   small wave buffers and a fill target that grows on underrun (less delay than SDL's fixed two buffers).
+   Done so far (in Eden; the console itself still to check):
+   - Resolution: the window is created resizable at the current mode's size, which is what SDL's Switch driver needs
+     to follow docking (1920x1080 docked, 1280x720 handheld, `SDL_WINDOWEVENT_SIZE_CHANGED` on a switch); the 640x480
+     picture is pillarboxed at 4:3. Before, it always rendered 720p. Both modes checked with `run_eden.ps1 -Handheld`;
+     switching while running can't be triggered from eden-cli.
+   - Focus: SDL reports no focus changes on the Switch, so `SwitchPlatform` hooks the applet messages. Losing focus
+     (HOME menu, sleep, overlays, library applets) takes the old WM_ACTIVATEAPP path: the board pauses and sound
+     mutes (captured output is silent). libnx's default handling stays, so the system suspends the game behind the
+     HOME menu; a resume clears the update backlog (SexyAppBase also caps catch-up at 200 ms). A timed game stays on
+     "click here to continue" after focus returns, rather than running on at once as on the PC. Tested with the
+     autoinput `focus <0|1>` command, which goes through the same path.
+   - Audio: `SwitchAudio` drives the audio renderer directly, in place of SDL's driver (which kept one 21 ms buffer
+     playing and one waiting): 5 ms buffers (one audren frame), 3 queued to start, one more each time the queue runs
+     dry (not after a suspend-length gap). Eden settles at 4-5 (20-25 ms); a console waking every frame should stay at
+     3. Eden won't play from a renderer with fewer voices than SDL's 24.
+   - Frame timing: the log gets a `perf:` line every 10 s. In Eden: software draw 7.5-8.5 ms per frame, present
+     17-21 ms, ~30 fps; the Phase 1 smoke test that drew nothing also ran at ~32 fps, so Eden's presentation is the
+     limit there. On hardware: check that this reaches 60 fps and whether the software draw needs work.
+   Still to check on hardware: HOME-menu close (saves) and suspend/resume, dock/undock while running, fps, audio
+   queue length and feel.
 7. **Polish.** Remove trial/register/web UI, controller prompts where needed, cursor feel.

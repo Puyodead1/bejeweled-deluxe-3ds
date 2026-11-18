@@ -1,9 +1,9 @@
 #ifndef __SDLSOUNDMANAGER_H__
 #define __SDLSOUNDMANAGER_H__
 
-// Switch port: the SoundManager on one SDL audio device, standing in for DSoundManager/DSoundInstance. Sounds are
-// decoded at load time (Ogg Vorbis through Tremor, or WAV) into 16-bit stereo at the device rate and mixed in the SDL
-// audio callback. Volume and pan follow DirectSound's rules (volume through DSoundManager::VolumeToDB, pan in
+// Switch port: the SoundManager standing in for DSoundManager/DSoundInstance. Sounds are decoded at load time (Ogg
+// Vorbis through Tremor, or WAV, with SDL's loaders and converters) into 16-bit stereo at the output rate and mixed on
+// SwitchAudio's thread (the audio renderer in 5 ms buffers; SDL's own Switch audio driver queued ~43 ms). Volume and pan follow DirectSound's rules (volume through DSoundManager::VolumeToDB, pan in
 // hundredths of a dB) so the game's levels sound as they did. The music interface mixes into the same device through
 // SetMusicMixer.
 
@@ -80,7 +80,7 @@ public:
 	typedef void			(*MusicMixFunc)(void* theUserData, int32_t* theBuffer, int theFrames);
 
 protected:
-	uint32_t				mDevice;
+	bool					mDevice;		// SwitchAudio is open
 	int						mFreq;
 	double					mMasterVolume;
 
@@ -96,7 +96,7 @@ protected:
 	FILE*					mCaptureFile;
 	int						mCaptureFramesLeft;
 
-	static void				AudioCallback(void* theUserData, uint8_t* theStream, int theLen);
+	static void				AudioCallback(void* theUserData, int16_t* theOut, int theFrames);
 	void					Mix(int16_t* theOut, int theFrames);
 
 	bool					DecodeFile(const std::string& theFilename, SDLSoundSample* theSample);
@@ -106,7 +106,7 @@ public:
 	SDLSoundManager();
 	virtual ~SDLSoundManager();
 
-	// The device is locked while the callback runs; hold it to change anything the callback reads.
+	// The output is locked while mixing; hold it to change anything the mixer reads.
 	void					Lock();
 	void					Unlock();
 	int						GetFrequency() { return mFreq; }

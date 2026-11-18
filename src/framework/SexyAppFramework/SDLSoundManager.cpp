@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "SDLSoundManager.h"
+#include "SwitchAudio.h"
 #include "../PakLib/PakInterface.h"
 
 using namespace Sexy;
@@ -166,39 +167,17 @@ SDLSoundManager::SDLSoundManager()
 	for (int i = 0; i < MAX_CHANNELS; i++)
 		mChannels[i] = NULL;
 
-	if (SDL_InitSubSystem(SDL_INIT_AUDIO) != 0)
-	{
-		fprintf(stderr, "SDL audio init failed: %s\n", SDL_GetError());
-		return;
-	}
-
 	// 48 kHz is the Switch's own rate, so nothing gets resampled twice.
-	SDL_AudioSpec aWant, aHave;
-	SDL_zero(aWant);
-	aWant.freq = 48000;
-	aWant.format = AUDIO_S16SYS;
-	aWant.channels = 2;
-	aWant.samples = 1024;
-	aWant.callback = AudioCallback;
-	aWant.userdata = this;
-	mDevice = SDL_OpenAudioDevice(NULL, 0, &aWant, &aHave, SDL_AUDIO_ALLOW_FREQUENCY_CHANGE);
-	if (mDevice == 0)
-	{
-		fprintf(stderr, "SDL_OpenAudioDevice failed: %s\n", SDL_GetError());
-		return;
-	}
-
-	mFreq = aHave.freq;
-	mMixBuffer.resize(aHave.samples * 2);
-	fprintf(stderr, "audio: %d Hz, %d frames per callback, driver %s\n", aHave.freq, aHave.samples, SDL_GetCurrentAudioDriver());
-	SDL_PauseAudioDevice(mDevice, 0);
+	mFreq = SwitchAudio::GetRate();
+	mMixBuffer.resize(1024 * 2);
+	mDevice = SwitchAudio::Open(AudioCallback, this);
 }
 
 SDLSoundManager::~SDLSoundManager()
 {
-	if (mDevice != 0)
-		SDL_CloseAudioDevice(mDevice);
-	mDevice = 0;
+	if (mDevice)
+		SwitchAudio::Close();
+	mDevice = false;
 	if (mCaptureFile != NULL)
 		fclose(mCaptureFile);
 	mCaptureFile = NULL;
@@ -209,14 +188,14 @@ SDLSoundManager::~SDLSoundManager()
 
 void SDLSoundManager::Lock()
 {
-	if (mDevice != 0)
-		SDL_LockAudioDevice(mDevice);
+	if (mDevice)
+		SwitchAudio::Lock();
 }
 
 void SDLSoundManager::Unlock()
 {
-	if (mDevice != 0)
-		SDL_UnlockAudioDevice(mDevice);
+	if (mDevice)
+		SwitchAudio::Unlock();
 }
 
 void SDLSoundManager::SetMusicMixer(MusicMixFunc theFunc, void* theUserData)
@@ -257,9 +236,9 @@ double SDLSoundManager::DBToGain(int theDB)
 	return pow(10.0, theDB / 2000.0);
 }
 
-void SDLSoundManager::AudioCallback(void* theUserData, uint8_t* theStream, int theLen)
+void SDLSoundManager::AudioCallback(void* theUserData, int16_t* theOut, int theFrames)
 {
-	((SDLSoundManager*)theUserData)->Mix((int16_t*)theStream, theLen / 4);
+	((SDLSoundManager*)theUserData)->Mix(theOut, theFrames);
 }
 
 void SDLSoundManager::Mix(int16_t* theOut, int theFrames)

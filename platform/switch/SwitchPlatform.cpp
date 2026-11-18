@@ -77,6 +77,43 @@ uint64_t SwitchPlatform::MicroTime()
 	return armTicksToNs(armGetSystemTick()) / 1000;
 }
 
+// Debugging aid, only when the log goes to nxlink: print Atmosphère's newest crash report, so a crash on the console
+// (including one after the game has returned to the loader) can be read on the next run.
+static void DumpLastCrashReport()
+{
+	const char* aDir = "sdmc:/atmosphere/crash_reports";
+	DIR* aDirHandle = opendir(aDir);
+	if (aDirHandle == NULL)
+		return;
+
+	std::string aNewest;
+	while (struct dirent* anEntry = readdir(aDirHandle))
+	{
+		std::string aName = anEntry->d_name;
+		if (aName.size() > 4 && aName.compare(aName.size() - 4, 4, ".log") == 0 && aName > aNewest)
+			aNewest = aName;
+	}
+	closedir(aDirHandle);
+	if (aNewest.empty())
+		return;
+
+	std::string aPath = std::string(aDir) + "/" + aNewest;
+	FILE* aFile = fopen(aPath.c_str(), "rb");
+	if (aFile == NULL)
+		return;
+	fprintf(stderr, "crash report %s:\n", aPath.c_str());
+	static char aBuf[1024];
+	size_t aTotal = 0;
+	size_t aRead;
+	while (aTotal < 24 * 1024 && (aRead = fread(aBuf, 1, sizeof(aBuf), aFile)) > 0)
+	{
+		fwrite(aBuf, 1, aRead, stderr);
+		aTotal += aRead;
+	}
+	fclose(aFile);
+	fprintf(stderr, "\n-- end of crash report --\n");
+}
+
 void SwitchPlatform::Init()
 {
 	// Logs go to `nxlink -s` when the .nro was sent with nxlink (the loader leaves the sender's address), in any
@@ -87,6 +124,9 @@ void SwitchPlatform::Init()
 		if (gNxlinkSocket < 0)
 			socketExit();
 	}
+
+	if (gNxlinkSocket >= 0)
+		DumpLastCrashReport();
 
 	if (gNxlinkSocket < 0)
 	{
@@ -163,6 +203,7 @@ bool SwitchPlatform::StartWorkerThread(void (*theProc)(void*), void* theArg, siz
 
 void SwitchPlatform::Exit()
 {
+	fprintf(stderr, "exit: worker threads\n");
 	for (int i = 0; i < gNumWorkerThreads; i++)
 	{
 		threadWaitForExit(&gWorkerThreads[i]);
@@ -170,21 +211,35 @@ void SwitchPlatform::Exit()
 	}
 	gNumWorkerThreads = 0;
 
+	fprintf(stderr, "exit: SDL_Quit\n");
 	SDL_Quit();
 
+	fprintf(stderr, "exit: romfs\n");
 	if (gRomfsMounted)
 		romfsExit();
 	gRomfsMounted = false;
 
+	fprintf(stderr, "exit: applet\n");
+	appletUnhook(&gAppletHookCookie);
+	appletUnlockExit();
+
+	// The sockets go last so the log covers every step above. (libnx's start-up code never runs C++ static
+	// destructors; after main returns only Mesa's two atexit handlers and libnx's own service teardown run.)
 	if (gNxlinkSocket >= 0)
 	{
+		fprintf(stderr, "exit: sockets, returning from main\n");
+		fflush(stdout);
+		svcSleepThread(200000000ULL);	// let nxlink receive the last lines before the session goes
+
+		// nxlinkStdio put stdout and stderr on the socket. socketExit removes the socket device, and exit() then
+		// closes every stdio stream: closing one whose device is gone reads a NULL function pointer, which is the
+		// crash on every quit from an nxlink-started game. Close those descriptors while the device is still there.
+		close(STDOUT_FILENO);
+		close(STDERR_FILENO);
 		close(gNxlinkSocket);
 		socketExit();
 		gNxlinkSocket = -1;
 	}
-
-	appletUnhook(&gAppletHookCookie);
-	appletUnlockExit();
 }
 
 std::string SwitchPlatform::TempFileName(const std::string& thePath)

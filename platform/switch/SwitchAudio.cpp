@@ -25,6 +25,7 @@ static bool gRendererUp = false;
 static bool gDriverUp = false;
 static AudioDriver gDriver;
 static int16_t* gPool = NULL;
+static int gPoolId = -1;
 static AudioDriverWaveBuf gBuffers[NUM_BUFFERS];
 static Thread gThread;
 static bool gThreadStarted = false;
@@ -141,8 +142,8 @@ bool SwitchAudio::Open(MixFunc theMix, void* theUserData)
 		gBuffers[i].end_sample_offset = (i + 1) * FRAMES_PER_BUFFER;
 	}
 
-	int aPoolId = audrvMemPoolAdd(&gDriver, gPool, aPoolSize);
-	audrvMemPoolAttach(&gDriver, aPoolId);
+	gPoolId = audrvMemPoolAdd(&gDriver, gPool, aPoolSize);
+	audrvMemPoolAttach(&gDriver, gPoolId);
 
 	static const u8 aSinkChannels[] = { 0, 1 };
 	audrvDeviceSinkAdd(&gDriver, AUDREN_DEFAULT_DEVICE_NAME, 2, aSinkChannels);
@@ -201,7 +202,20 @@ void SwitchAudio::Close()
 
 	if (gDriverUp)
 	{
+		// Hand the sample memory back before the renderer goes: stop the voice, detach and remove the pool, and let
+		// the renderer see it, so nothing of ours is still mapped for the DSP when the memory is freed and the
+		// loader reuses it.
 		audrvVoiceStop(&gDriver, 0);
+		audrvUpdate(&gDriver);
+		if (gPoolId >= 0)
+		{
+			audrvMemPoolDetach(&gDriver, gPoolId);
+			audrvUpdate(&gDriver);
+			audrvMemPoolRemove(&gDriver, gPoolId);
+			audrvUpdate(&gDriver);
+			gPoolId = -1;
+		}
+		audrenStopAudioRenderer();
 		audrvClose(&gDriver);
 		gDriverUp = false;
 	}

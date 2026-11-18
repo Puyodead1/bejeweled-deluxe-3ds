@@ -33,7 +33,8 @@
 #include "MusicInterface.h"
 #include "SoundManager.h"
 #include "SoundInstance.h"
-#include "NullSoundManager.h"
+#include "SDLSoundManager.h"
+#include "SDLMusicInterface.h"
 #include "SwitchRegistry.h"
 #include "SwitchPlatform.h"
 #include <string>
@@ -2747,6 +2748,7 @@ void SexyAppBase::UpdateControllerPointer(DWORD theElapsed)
 //   <ms> stick <dx> <dy> <ms>   hold the left stick at dx,dy (-1..1) for a while
 //   <ms> hint | hintdrag        make the game's hinted move by two taps or by a drag (GetAutoInputMove)
 //   <ms> shot                   screenshot to <app data>/_screenshots/
+//   <ms> rec <ms>               record the audio output to <app data>/_capture.raw (16-bit stereo, device rate)
 //   <ms> quit
 // Lines starting with # are ignored.
 void SexyAppBase::LoadAutoInput()
@@ -2875,6 +2877,12 @@ void SexyAppBase::ProcessAutoInput()
 		}
 		else if (aCommand == "shot")
 			TakeScreenshot();
+		else if (aCommand == "rec")
+		{
+			SDLSoundManager* aSoundManager = dynamic_cast<SDLSoundManager*>(mSoundManager);
+			if (aSoundManager != NULL && aNumArgs >= 1)
+				aSoundManager->StartCapture(GetAppDataFolder() + "_capture.raw", (int)a1);
+		}
 		else if (aCommand == "quit")
 		{
 			PushMessage(WM_CLOSE, 0, 0);
@@ -4783,7 +4791,11 @@ bool SexyAppBase::ChangeDirHook(const char *theIntendedPath)
 // FUNCTION: GAME187 0x44e3e0
 MusicInterface* SexyAppBase::CreateMusicInterface(HWND theWindow)
 {
-	return new MusicInterface;
+	// Music shares the sound manager's audio device.
+	SDLSoundManager* aSoundManager = dynamic_cast<SDLSoundManager*>(mSoundManager);
+	if (aSoundManager == NULL)
+		return new MusicInterface;
+	return new SDLMusicInterface(aSoundManager);
 }
 
 void SexyAppBase::InitPropertiesHook()
@@ -4864,7 +4876,7 @@ void SexyAppBase::Init()
 	}
 
 	if (mSoundManager == NULL)
-		mSoundManager = new NullSoundManager();
+		mSoundManager = new SDLSoundManager();
 
 	SetSfxVolume(mSfxVolume);
 

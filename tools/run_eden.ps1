@@ -7,6 +7,7 @@
 #   -Log      file name under sdmc:/switch/Bejeweled/ to print afterwards
 #   -AutoInput  scripted input for the game (format: SexyAppBase::LoadAutoInput), installed for this run only
 #   -Shots    copy the game's own screenshots (the script's 'shot' command) here afterwards
+#   -Fresh    delete the saved game first, so the run starts without the resume dialog
 # Eden is looked up in $env:EDEN_DIR, then ~\Downloads\eden. Its SD card is %APPDATA%\eden\sdmc.
 param(
     [string]$Nro = "$PSScriptRoot\..\build\hello.nro",
@@ -15,7 +16,8 @@ param(
     [string]$Log = 'hello.log',
     [string]$Shot = '',
     [string]$AutoInput = '',
-    [string]$Shots = ''
+    [string]$Shots = '',
+    [switch]$Fresh
 )
 $ErrorActionPreference = 'Stop'
 $edenDir = if ($env:EDEN_DIR) { $env:EDEN_DIR } else { Join-Path $env:USERPROFILE 'Downloads\eden' }
@@ -28,6 +30,7 @@ $dataDir = Join-Path $env:APPDATA 'eden\sdmc\switch\Bejeweled'
 $autoPath = Join-Path $dataDir 'autoinput.txt'
 $shotDir = Join-Path $dataDir '_screenshots'
 Remove-Item $shotDir -Recurse -ErrorAction SilentlyContinue
+if ($Fresh) { Remove-Item (Join-Path $dataDir 'userdata\savegame.dat') -ErrorAction SilentlyContinue }
 if ($AutoInput) { New-Item -ItemType Directory -Force $dataDir | Out-Null; Copy-Item $AutoInput $autoPath -Force }
 Get-Process eden-cli -ErrorAction SilentlyContinue | Stop-Process -Force
 

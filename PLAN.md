@@ -75,6 +75,16 @@ one: either rename/drop the vendored copy and use 1.3.1 (libpng 1.0.5 only uses 
    Testing: `<app data>/autoinput.txt` scripts taps, drags, pad buttons, the stick, the game's own hint move and
    screenshots (see `SexyAppBase::LoadAutoInput`; `tools/run_eden.ps1 -AutoInput -Shots`).
 4. **Audio.** SoundManager/SoundInstance mixer and the libmodplug MusicInterface with fades.
+   Done: `SDLSoundManager` decodes the sounds (Ogg through Tremor, WAV) to 48 kHz stereo at load time and mixes them
+   with the music in one SDL callback; volume and pan go through DirectSound's dB curves so levels match the PC.
+   `SDLMusicInterface` plays the .mo3/.it songs with libmodplug and mirrors BassMusicInterface's fades. The autoinput
+   `rec <ms>` command dumps the mixed output for checking (no clipping in a full game). Latency: a sound is mixed
+   5–27 ms after `Play`, then waits behind one queued 1024-frame buffer (SDL's audren driver keeps two), so ≤ ~55 ms
+   before the console's own output. 512 frames can't be used in Eden: it wakes the audio thread only every
+   10–30 ms and then takes ~36k frames/s. `tools/run_eden.ps1 -Fresh` deletes the saved game so scripted runs don't
+   open on the resume dialog.
 5. **Saves.** Registry and high scores (`userdata/hiscores.dat` seeded from RomFS) in `sdmc:/switch/Bejeweled/`.
 6. **Hardware pass.** Docked/handheld resolution, home-menu suspend (pause audio), applet exit, performance (60 fps).
+   Audio latency: on hardware audren runs 5 ms frames, so try 512 frames, or our own audrv backend with several
+   small wave buffers and a fill target that grows on underrun (less delay than SDL's fixed two buffers).
 7. **Polish.** Remove trial/register/web UI, controller prompts where needed, cursor feel.

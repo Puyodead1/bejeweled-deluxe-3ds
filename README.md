@@ -54,9 +54,10 @@ pointers, it logs every unmapped access to `%APPDATA%\eden\log\eden_log.txt` and
 seems to hang. `tools\gdb_eden.ps1` runs the game under gdb through Eden's gdbstub (see the comment at its top).
 
 For scripted runs, `-AutoInput script.txt` installs a script of timed taps, drags, controller buttons, stick moves,
-"make the hinted move" and in-game screenshots (format in `SexyAppBase::LoadAutoInput`), and `-Shots dir` collects
-the screenshots afterwards:
+"make the hinted move", in-game screenshots and audio capture (`rec <ms>` writes the mixed output to
+`_capture.raw`, 16-bit stereo 48 kHz; format in `SexyAppBase::LoadAutoInput`), `-Shots dir` collects the screenshots
+afterwards, and `-Fresh` deletes the saved game first so the run doesn't open on the resume dialog:
 
 ```powershell
-.\tools\run_eden.ps1 -Nro build\bejeweled.nro -Seconds 30 -Log bejeweled.log -AutoInput play.txt -Shots shots
+.\tools\run_eden.ps1 -Fresh -Nro build\bejeweled.nro -Seconds 30 -Log bejeweled.log -AutoInput play.txt -Shots shots
 ```

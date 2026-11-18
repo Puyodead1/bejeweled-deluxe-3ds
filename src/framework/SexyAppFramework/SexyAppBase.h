@@ -236,6 +236,26 @@ public:
 	HCURSOR					mDraggingCursor;
 	WidgetSafeDeleteList	mSafeDeleteList;
 	bool					mMouseIn;	
+
+	// Where the pointer is in window pixels, whether it is over the screen and whether to draw the game's cursor
+	// (true while a controller drives it; touch has no cursor). Replaces asking Windows for the cursor position.
+	int						mPointerX;
+	int						mPointerY;
+	bool					mPointerIn;
+	bool					mPointerVisible;
+	// Controller pointer: sub-pixel position, A held, last stick/d-pad update.
+	double					mPadPointerX;
+	double					mPadPointerY;
+	bool					mPadButtonDown;
+	DWORD					mPadLastTick;
+	void*					mGameControllers[8];
+	// Scripted test input (see LoadAutoInput).
+	std::vector<std::string>	mAutoInput;
+	size_t					mAutoInputIndex;
+	DWORD					mAutoInputNext;
+	double					mAutoStickX;
+	double					mAutoStickY;
+	DWORD					mAutoStickUntil;
 	bool					mRunning;
 	bool					mActive;
 	bool					mMinimized;
@@ -574,6 +594,15 @@ public:
 	// original window procedure would have queued (mouse/touch, keys, text, focus, close), plus the frame timer.
 	virtual void			ProcessSDLEvents();
 	void					PushMessage(UINT theMessage, WPARAM wParam, LPARAM lParam);
+	void					MovePointer(int theX, int theY, bool fromController);
+	void					UpdateControllerPointer(DWORD theElapsed);
+	void					OpenControllers();
+	void					HandleControllerButton(int theButton, bool isDown);
+	void					PushKeyPress(int theKeyCode, int theChar);
+	void					LoadAutoInput();
+	void					ProcessAutoInput();
+	// For the autoinput "hint" commands: a good move as two positions in game pixels, or false if there is none.
+	virtual bool			GetAutoInputMove(int& theX1, int& theY1, int& theX2, int& theY2) { return false; }
 };
 
 extern SexyAppBase* gSexyAppBase;

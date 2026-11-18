@@ -52,6 +52,7 @@ public:
 	virtual void ModalClose();        // vtable+0xec (same code as 0xf0, folded by the linker)
 	virtual void GotFocus();        // vtable+0xf0
 	virtual void LostFocus();        // vtable+0xf4
+	virtual bool GetAutoInputMove(int& theX1, int& theY1, int& theX2, int& theY2); // Switch port: scripted testing
 
 	// Names below are guesses from what the code does.
 	void NewBoard();

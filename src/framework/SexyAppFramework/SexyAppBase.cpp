@@ -1,6 +1,5 @@
 //#define SEXY_TRACING_ENABLED
 //#define SEXY_PERF_ENABLED
-//#define SEXY_MEMTRACE
 
 #include <fstream>
 #include <SDL.h>
@@ -164,6 +163,21 @@ SexyAppBase::SexyAppBase()
 	mSoundManager = NULL;
 	mCursorNum = CURSOR_POINTER;
 	mMouseIn = false;
+	mPointerX = -1;
+	mPointerY = -1;
+	mPointerIn = false;
+	mPointerVisible = false;
+	mPadPointerX = 0;
+	mPadPointerY = 0;
+	mPadButtonDown = false;
+	mPadLastTick = 0;
+	mAutoInputIndex = 0;
+	mAutoInputNext = 0;
+	mAutoStickX = 0;
+	mAutoStickY = 0;
+	mAutoStickUntil = 0;
+	for (int aPad = 0; aPad < (int)(sizeof(mGameControllers) / sizeof(mGameControllers[0])); aPad++)
+		mGameControllers[aPad] = NULL;
 	mRunning = false;
 	mActive = true;
 	mProcessInTimer = false;
@@ -2441,6 +2455,9 @@ void SexyAppBase::PushMessage(UINT theMessage, WPARAM wParam, LPARAM lParam)
 
 void SexyAppBase::ProcessSDLEvents()
 {
+	if (!mAutoInput.empty() && !mShutdown)
+		ProcessAutoInput();
+
 	SDL_Event anEvent;
 	while (SDL_PollEvent(&anEvent))
 	{
@@ -2471,14 +2488,18 @@ void SexyAppBase::ProcessSDLEvents()
 			}
 			break;
 
+		// Touch arrives here too: SDL turns the first finger into mouse events (which == SDL_TOUCH_MOUSEID).
 		case SDL_MOUSEMOTION:
-			PushMessage(WM_MOUSEMOVE, 0, MAKELONG(anEvent.motion.x, anEvent.motion.y));
+			// A finger only moves while it's down; a hovering mouse always counts.
+			if (anEvent.motion.which != SDL_TOUCH_MOUSEID || anEvent.motion.state != 0)
+				MovePointer(anEvent.motion.x, anEvent.motion.y, false);
 			break;
 
 		case SDL_MOUSEBUTTONDOWN:
 		case SDL_MOUSEBUTTONUP:
 		{
 			bool isDown = anEvent.type == SDL_MOUSEBUTTONDOWN;
+			bool isTouch = anEvent.button.which == SDL_TOUCH_MOUSEID;
 			LPARAM aPos = MAKELONG(anEvent.button.x, anEvent.button.y);
 			UINT aMessage;
 			if (anEvent.button.button == SDL_BUTTON_RIGHT)
@@ -2490,10 +2511,23 @@ void SexyAppBase::ProcessSDLEvents()
 
 			// A touch lands without any hover first; move the pointer there so the widget under it is "over".
 			if (isDown)
-				PushMessage(WM_MOUSEMOVE, 0, aPos);
+				MovePointer(anEvent.button.x, anEvent.button.y, false);
 			PushMessage(aMessage, 0, aPos);
+
+			// A lifted finger isn't over anything any more, so hover highlights go away (the next WM_TIMER sees it).
+			if (!isDown && isTouch)
+				mPointerIn = false;
 			break;
 		}
+
+		case SDL_JOYDEVICEADDED:
+			OpenControllers();
+			break;
+
+		case SDL_JOYBUTTONDOWN:
+		case SDL_JOYBUTTONUP:
+			HandleControllerButton(anEvent.jbutton.button, anEvent.type == SDL_JOYBUTTONDOWN);
+			break;
 
 		case SDL_MOUSEWHEEL:
 			PushMessage(WM_MOUSEWHEEL, MAKELONG(0, anEvent.wheel.y * 120), 0);
@@ -2542,13 +2576,310 @@ void SexyAppBase::ProcessSDLEvents()
 		}
 	}
 
-	// Stand-in for the 10 ms SetTimer the window used to get.
 	DWORD aTimeNow = GetTickCount();
+	if (!mShutdown)
+		UpdateControllerPointer(aTimeNow - mPadLastTick);
+	mPadLastTick = aTimeNow;
+
+	// Stand-in for the 10 ms SetTimer the window used to get.
 	static DWORD aLastTimerPush = 0;
 	if (aTimeNow - aLastTimerPush >= (DWORD)mFrameTime)
 	{
 		aLastTimerPush = aTimeNow;
 		PushMessage(WM_TIMER, 100, 0);
+	}
+}
+
+// Moves the pointer (window pixels) and tells the widgets. fromController shows the game's cursor; touch hides it.
+void SexyAppBase::MovePointer(int theX, int theY, bool fromController)
+{
+	mPointerX = theX;
+	mPointerY = theY;
+	mPointerIn = true;
+
+	// The software cursor is drawn in game pixels.
+	int aGameX = theX, aGameY = theY;
+	mDDInterface->RemapMouse(aGameX, aGameY);
+	mDDInterface->SetCursorPos(aGameX, aGameY);
+	if (mPointerVisible != fromController)
+	{
+		mPointerVisible = fromController;
+		EnforceCursor();
+	}
+	PushMessage(WM_MOUSEMOVE, 0, MAKELONG(theX, theY));
+}
+
+// Joystick button numbers on SDL's Switch driver (Nintendo labels).
+enum
+{
+	PAD_A = 0, PAD_B = 1, PAD_X = 2, PAD_Y = 3, PAD_LSTICK = 4, PAD_RSTICK = 5, PAD_L = 6, PAD_R = 7, PAD_ZL = 8,
+	PAD_ZR = 9, PAD_PLUS = 10, PAD_MINUS = 11, PAD_LEFT = 12, PAD_UP = 13, PAD_RIGHT = 14, PAD_DOWN = 15
+};
+
+void SexyAppBase::OpenControllers()
+{
+	int aCount = std::min(SDL_NumJoysticks(), (int)(sizeof(mGameControllers) / sizeof(mGameControllers[0])));
+	for (int i = 0; i < aCount; i++)
+	{
+		if (mGameControllers[i] == NULL)
+			mGameControllers[i] = SDL_JoystickOpen(i);
+	}
+}
+
+// A key press the way Windows delivers one: down, the character, up.
+void SexyAppBase::PushKeyPress(int theKeyCode, int theChar)
+{
+	PushMessage(WM_KEYDOWN, theKeyCode, 0);
+	if (theChar != 0)
+		PushMessage(WM_CHAR, theChar, 0);
+	PushMessage(WM_KEYUP, theKeyCode, 0);
+}
+
+void SexyAppBase::HandleControllerButton(int theButton, bool isDown)
+{
+	switch (theButton)
+	{
+	case PAD_A:
+	case PAD_ZR:
+	case PAD_R:
+	{
+		// Click where the controller pointer is; bring it out first if touch had hidden it.
+		if (isDown == mPadButtonDown)
+			break;
+		if (!mPointerVisible)
+		{
+			mPadPointerX = mPointerX;
+			mPadPointerY = mPointerY;
+		}
+		int aX = (int)mPadPointerX, aY = (int)mPadPointerY;
+		if (isDown)
+			MovePointer(aX, aY, true);
+		PushMessage(isDown ? WM_LBUTTONDOWN : WM_LBUTTONUP, 0, MAKELONG(aX, aY));
+		mPadButtonDown = isDown;
+		break;
+	}
+
+	case PAD_B:
+		if (isDown)
+			PushKeyPress(KEYCODE_ESCAPE, KEYCODE_ESCAPE);
+		break;
+
+	case PAD_PLUS:
+		// Any character pauses the board.
+		if (isDown)
+			PushKeyPress(KEYCODE_SPACE, ' ');
+		break;
+	}
+}
+
+// Left stick and d-pad steer the pointer, faster the further the stick is pushed.
+void SexyAppBase::UpdateControllerPointer(DWORD theElapsed)
+{
+	if (theElapsed > 100)
+		theElapsed = 100;
+
+	const int aDeadZone = 6000;
+	double aDX = 0, aDY = 0;
+	for (int i = 0; i < (int)(sizeof(mGameControllers) / sizeof(mGameControllers[0])); i++)
+	{
+		SDL_Joystick* aJoy = (SDL_Joystick*)mGameControllers[i];
+		if (aJoy == NULL)
+			continue;
+
+		for (int anAxis = 0; anAxis < 2; anAxis++)
+		{
+			int aValue = SDL_JoystickGetAxis(aJoy, anAxis);
+			if (abs(aValue) <= aDeadZone)
+				continue;
+			double aNorm = (abs(aValue) - aDeadZone) / (32767.0 - aDeadZone);
+			if (aNorm > 1.0)
+				aNorm = 1.0;
+			double aSpeed = 0.15 + 0.85 * aNorm * aNorm;
+			(anAxis == 0 ? aDX : aDY) += (aValue < 0) ? -aSpeed : aSpeed;
+		}
+
+		if (SDL_JoystickGetButton(aJoy, PAD_LEFT))	aDX -= 0.4;
+		if (SDL_JoystickGetButton(aJoy, PAD_RIGHT))	aDX += 0.4;
+		if (SDL_JoystickGetButton(aJoy, PAD_UP))	aDY -= 0.4;
+		if (SDL_JoystickGetButton(aJoy, PAD_DOWN))	aDY += 0.4;
+	}
+
+	if ((int)(mAutoStickUntil - GetTickCount()) > 0)
+	{
+		aDX += mAutoStickX;
+		aDY += mAutoStickY;
+	}
+
+	if (aDX == 0 && aDY == 0)
+		return;
+
+	if (!mPointerVisible)
+	{
+		// Pick up from wherever the pointer was (or the middle of the screen the first time).
+		if (mPointerX < 0)
+		{
+			Rect& aRect = mDDInterface->mPresentationRect;
+			mPointerX = aRect.mX + aRect.mWidth / 2;
+			mPointerY = aRect.mY + aRect.mHeight / 2;
+		}
+		mPadPointerX = mPointerX;
+		mPadPointerY = mPointerY;
+	}
+
+	// Full deflection crosses the picture in about a second and a half.
+	Rect& aRect = mDDInterface->mPresentationRect;
+	double aPixelsPerMs = aRect.mWidth / 1500.0;
+	mPadPointerX += aDX * aPixelsPerMs * theElapsed;
+	mPadPointerY += aDY * aPixelsPerMs * theElapsed;
+	mPadPointerX = std::max((double)aRect.mX, std::min(mPadPointerX, (double)(aRect.mX + aRect.mWidth - 1)));
+	mPadPointerY = std::max((double)aRect.mY, std::min(mPadPointerY, (double)(aRect.mY + aRect.mHeight - 1)));
+
+	int aX = (int)mPadPointerX, aY = (int)mPadPointerY;
+	if (aX != mPointerX || aY != mPointerY || !mPointerVisible || !mPointerIn)
+		MovePointer(aX, aY, true);
+}
+
+// Scripted input for testing, read from <app data>/autoinput.txt when that file exists. One command per line, each
+// after a delay in milliseconds from the previous one; positions are in game pixels (640x480):
+//   <ms> tap <x> <y>            touch down and up
+//   <ms> down|move|up <x> <y>   touch down, drag, lift
+//   <ms> pad <button> down|up   joystick button number (0 = A, 1 = B, 10 = +, ...)
+//   <ms> stick <dx> <dy> <ms>   hold the left stick at dx,dy (-1..1) for a while
+//   <ms> hint | hintdrag        make the game's hinted move by two taps or by a drag (GetAutoInputMove)
+//   <ms> shot                   screenshot to <app data>/_screenshots/
+//   <ms> quit
+// Lines starting with # are ignored.
+void SexyAppBase::LoadAutoInput()
+{
+	FILE* aFP = fopen((GetAppDataFolder() + "autoinput.txt").c_str(), "r");
+	if (aFP == NULL)
+		return;
+
+	char aLine[256];
+	while (fgets(aLine, sizeof(aLine), aFP) != NULL)
+	{
+		if (aLine[0] != '#' && aLine[0] != '\r' && aLine[0] != '\n')
+			mAutoInput.push_back(aLine);
+	}
+	fclose(aFP);
+
+	mAutoInputIndex = 0;
+	mAutoInputNext = GetTickCount();
+	fprintf(stderr, "autoinput: %d commands\n", (int)mAutoInput.size());
+}
+
+void SexyAppBase::ProcessAutoInput()
+{
+	DWORD aNow = GetTickCount();
+	while (mAutoInputIndex < mAutoInput.size())
+	{
+		const char* aLine = mAutoInput[mAutoInputIndex].c_str();
+		int aDelay = 0;
+		char aCmd[32] = "";
+		int aRead = 0;
+		if (sscanf(aLine, "%d %31s %n", &aDelay, aCmd, &aRead) < 2)
+		{
+			mAutoInputIndex++;
+			continue;
+		}
+		if ((int)(aNow - mAutoInputNext) < aDelay)
+			break;
+		mAutoInputNext += aDelay;
+		mAutoInputIndex++;
+
+		const char* anArgs = aLine + aRead;
+		Rect& aRect = mDDInterface->mPresentationRect;
+		double a1 = 0, a2 = 0, a3 = 0;
+		char aWord[16] = "";
+		int aNumArgs = sscanf(anArgs, "%lf %lf %lf", &a1, &a2, &a3);
+		int aWinX = aRect.mX + (int)(a1 * aRect.mWidth / mWidth);
+		int aWinY = aRect.mY + (int)(a2 * aRect.mHeight / mHeight);
+		fprintf(stderr, "autoinput @%u: %s", (unsigned)aNow, aLine);
+
+		std::string aCommand = aCmd;
+		if (aCommand == "tap" || aCommand == "down" || aCommand == "move" || aCommand == "up")
+		{
+			if (aNumArgs < 2)
+				continue;
+
+			SDL_Event anEvent;
+			SDL_zero(anEvent);
+			if (aCommand == "move")
+			{
+				anEvent.type = SDL_MOUSEMOTION;
+				anEvent.motion.which = SDL_TOUCH_MOUSEID;
+				anEvent.motion.state = SDL_BUTTON_LMASK;
+				anEvent.motion.x = aWinX;
+				anEvent.motion.y = aWinY;
+				SDL_PushEvent(&anEvent);
+				continue;
+			}
+
+			anEvent.button.which = SDL_TOUCH_MOUSEID;
+			anEvent.button.button = SDL_BUTTON_LEFT;
+			anEvent.button.clicks = 1;
+			anEvent.button.x = aWinX;
+			anEvent.button.y = aWinY;
+			if (aCommand != "up")
+			{
+				anEvent.type = SDL_MOUSEBUTTONDOWN;
+				anEvent.button.state = SDL_PRESSED;
+				SDL_PushEvent(&anEvent);
+			}
+			if (aCommand != "down")
+			{
+				anEvent.type = SDL_MOUSEBUTTONUP;
+				anEvent.button.state = SDL_RELEASED;
+				SDL_PushEvent(&anEvent);
+			}
+		}
+		else if (aCommand == "pad")
+		{
+			int aButton = 0;
+			if (sscanf(anArgs, "%d %15s", &aButton, aWord) == 2)
+				HandleControllerButton(aButton, strcmp(aWord, "down") == 0);
+		}
+		else if (aCommand == "stick")
+		{
+			mAutoStickX = a1;
+			mAutoStickY = a2;
+			mAutoStickUntil = aNow + (DWORD)a3;
+		}
+		else if (aCommand == "hint" || aCommand == "hintdrag")
+		{
+			// Make the move the game would hint, by tapping both gems or by dragging one onto the other.
+			int aX1, aY1, aX2, aY2;
+			if (!GetAutoInputMove(aX1, aY1, aX2, aY2))
+			{
+				fprintf(stderr, "autoinput: no move\n");
+				continue;
+			}
+
+			char aBuf[4][64];
+			std::vector<std::string> aSteps;
+			if (aCommand == "hint")
+			{
+				sprintf(aBuf[0], "0 tap %d %d\n", aX1, aY1);
+				sprintf(aBuf[1], "250 tap %d %d\n", aX2, aY2);
+				aSteps.assign(aBuf, aBuf + 2);
+			}
+			else
+			{
+				sprintf(aBuf[0], "0 down %d %d\n", aX1, aY1);
+				sprintf(aBuf[1], "60 move %d %d\n", (aX1 + aX2) / 2, (aY1 + aY2) / 2);
+				sprintf(aBuf[2], "60 move %d %d\n", aX2, aY2);
+				sprintf(aBuf[3], "60 up %d %d\n", aX2, aY2);
+				aSteps.assign(aBuf, aBuf + 4);
+			}
+			mAutoInput.insert(mAutoInput.begin() + mAutoInputIndex, aSteps.begin(), aSteps.end());
+		}
+		else if (aCommand == "shot")
+			TakeScreenshot();
+		else if (aCommand == "quit")
+		{
+			PushMessage(WM_CLOSE, 0, 0);
+			CloseRequestAsync();
+		}
 	}
 }
 
@@ -3304,10 +3635,10 @@ bool SexyAppBase::ProcessDeferredMessages(bool singleMessage)
 						}
 					}
 
-					// The pointer is "in" while SDL's mouse (or a mouse synthesised from touch) is over the window.
-					int aPointX = 0, aPointY = 0;
-					SDL_GetMouseState(&aPointX, &aPointY);
-					bool isMouseIn = SDL_GetMouseFocus() != NULL;
+					// The pointer is "in" while a finger is down, or while a mouse or the controller pointer is out.
+					int aPointX = mPointerX;
+					int aPointY = mPointerY;
+					bool isMouseIn = mPointerIn;
 
 					if (mMouseIn != isMouseIn)
 					{
@@ -3496,17 +3827,10 @@ void SexyAppBase::StartLoadingThread()
 		mYieldMainThread = true;
 		mLoadingThreadStarted = true;
 
-		// Image decoding (libpng/libjpeg) wants more stack than a default thread gets.
-		pthread_attr_t anAttr;
-		pthread_attr_init(&anAttr);
-		pthread_attr_setstacksize(&anAttr, 1024 * 1024);
-		pthread_t aThread;
-		struct Stub { static void* Run(void* theArg) { LoadingThreadProcStub(theArg); return NULL; } };
-		if (pthread_create(&aThread, &anAttr, Stub::Run, this) == 0)
-			pthread_detach(aThread);
-		else
+		// On another core, or the title screen wouldn't draw until loading is done. Image decoding (libpng/libjpeg)
+		// wants more stack than a default thread gets.
+		if (!SwitchPlatform::StartWorkerThread(LoadingThreadProcStub, this, 1024 * 1024))
 			LoadingThreadProcStub(this);
-		pthread_attr_destroy(&anAttr);
 	}
 }
 // FUNCTION: GAME187 0x44bce0
@@ -3575,7 +3899,7 @@ void SexyAppBase::EnforceCursor()
 	// Only the game's own cursor images are ever drawn, and only while a pointer is over the screen.
 	Image* aCursorImage = NULL;
 	if ((!mSEHOccured) && (mMouseIn) && (mCursorImages[mCursorNum] != NULL) &&
-		((mPlayingDemoBuffer) || (mCustomCursorsEnabled) || (mCursorNum == CURSOR_CUSTOM)))
+		((mPlayingDemoBuffer) || (mPointerVisible) || (mCursorNum == CURSOR_CUSTOM)))
 		aCursorImage = mCursorImages[mCursorNum];
 
 	if (mDDInterface->SetCursorImage(aCursorImage))
@@ -4479,7 +4803,7 @@ void SexyAppBase::Init()
 	if (mShutdown)
 		return;
 
-	if (SDL_InitSubSystem(SDL_INIT_VIDEO | SDL_INIT_EVENTS) != 0)
+	if (SDL_InitSubSystem(SDL_INIT_VIDEO | SDL_INIT_EVENTS | SDL_INIT_JOYSTICK) != 0)
 	{
 		Popup(std::string("SDL_Init failed: ") + SDL_GetError());
 		DoExit(1);
@@ -4554,6 +4878,8 @@ void SexyAppBase::Init()
 	}
 
 	InitHook();
+
+	LoadAutoInput();
 
 	mInitialized = true;
 }

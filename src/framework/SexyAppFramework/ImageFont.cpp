@@ -5,6 +5,7 @@
 #include "MemoryImage.h"
 #include "DDImage.h"
 #include "../SexyAppFramework/AutoCrit.h"
+#include "../PakLib/PakInterface.h"
 
 using namespace Sexy;
 
@@ -1065,7 +1066,7 @@ bool FontData::LoadLegacy(Image* theFontImage, const std::string& theFontDescFil
 	aFontLayer->mAscent = aFontLayer->mImage->GetHeight();	
 
 	int aCharPos = 0;
-	FILE *aStream = fopen(theFontDescFileName.c_str(), "r");
+	FILE *aStream = fopen(ResolveDataPath(theFontDescFileName).c_str(), "r");
 
 	if (aStream==NULL)
  		return false;

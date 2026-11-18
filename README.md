@@ -52,3 +52,11 @@ Homebrew Menu (title-override / full RAM mode recommended).
 The game logs to `sdmc:/switch/Bejeweled/bejeweled.log` (pass `-Log bejeweled.log`). Eden doesn't fault on wild
 pointers, it logs every unmapped access to `%APPDATA%\eden\log\eden_log.txt` and crawls on; check there when the game
 seems to hang. `tools\gdb_eden.ps1` runs the game under gdb through Eden's gdbstub (see the comment at its top).
+
+For scripted runs, `-AutoInput script.txt` installs a script of timed taps, drags, controller buttons, stick moves,
+"make the hinted move" and in-game screenshots (format in `SexyAppBase::LoadAutoInput`), and `-Shots dir` collects
+the screenshots afterwards:
+
+```powershell
+.\tools\run_eden.ps1 -Nro build\bejeweled.nro -Seconds 30 -Log bejeweled.log -AutoInput play.txt -Shots shots
+```

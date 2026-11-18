@@ -117,6 +117,30 @@ void WinDMApp::LostFocus()
 		mBoard->Pause(mTimeTrial);
 }
 
+// Switch port: the move the board would hint, as gem centres, for scripted test input.
+bool WinDMApp::GetAutoInputMove(int& theX1, int& theY1, int& theX2, int& theY2)
+{
+	int aMove[4];
+	if (mBoard == NULL)
+		return false;
+	if (mBoard->mHintActive)
+	{
+		// The first-game tutorial: its move is the one it points at, and its dialog covers the top row.
+		aMove[0] = mBoard->mHintCol1;
+		aMove[1] = mBoard->mHintRow;
+		aMove[2] = mBoard->mHintCol2;
+		aMove[3] = mBoard->mHintRow;
+	}
+	else if (!mBoard->FindMove(aMove, 0, true, true))
+		return false;
+
+	theX1 = mBoard->mX + mBoard->GetColX(aMove[0]) + 25;
+	theY1 = mBoard->mY + mBoard->GetRowY(aMove[1]) + 25;
+	theX2 = mBoard->mX + mBoard->GetColX(aMove[2]) + 25;
+	theY2 = mBoard->mY + mBoard->GetRowY(aMove[3]) + 25;
+	return true;
+}
+
 // FUNCTION: GAME 0x40bfad
 // FUNCTION: GAME187 0x4d48a9
 void WinDMApp::ButtonPress(int theId)

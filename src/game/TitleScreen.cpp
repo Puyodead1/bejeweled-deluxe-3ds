@@ -165,10 +165,14 @@ void TitleScreen::Update()
 
 		if ((!mLoadingComplete) && (mUpdateCnt % 4 == 0))
 		{
+			double aTarget;
 			if (mApp->mIsRegistered)
-				mCurBarWidth = mApp->GetLoadingThreadProgress();
+				aTarget = mApp->GetLoadingThreadProgress();
 			else
-				mCurBarWidth = min(mTimerProgress, mApp->GetLoadingThreadProgress());
+				aTarget = min(mTimerProgress, mApp->GetLoadingThreadProgress());
+			// Switch port: loading from RomFS takes a fraction of a second, so the original bar (which jumps straight
+			// to the progress) went from empty to full in one step. Let it fill over at least ~0.6 s instead.
+			mCurBarWidth = min(aTarget, mCurBarWidth + 0.07);
 
 			if ((mCurBarWidth == 1.0) && (mApp->mLoaded))
 			{

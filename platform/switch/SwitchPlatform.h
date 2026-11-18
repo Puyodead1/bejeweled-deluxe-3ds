@@ -13,6 +13,11 @@ namespace SwitchPlatform
 	// Shuts SDL down and unmounts what Init mounted.
 	void		Exit();
 
+	// Starts a background thread on a different CPU core from the caller's. Horizon doesn't time-slice threads of
+	// equal priority on one core, so a busy worker started with pthread_create (which uses the caller's core) keeps the
+	// main thread from running at all. Returns false if no thread could be started. Exit() waits for it.
+	bool		StartWorkerThread(void (*theProc)(void*), void* theArg, size_t theStackSize);
+
 	// Shows the system error applet with a title line and details; returns when the user dismisses it.
 	void		ShowError(const std::string& theTitle, const std::string& theText);
 }

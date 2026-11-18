@@ -61,11 +61,19 @@ one: either rename/drop the vendored copy and use 1.3.1 (libpng 1.0.5 only uses 
    Done: `bejeweled.nro` links and boots in Eden without crashing (black screen so far). Along the way SexyAppBase
    moved onto SDL already: one fullscreen `SDL_Window`, SDL events turned into the same `WM_*` messages the deferred
    queue always handled (so demo recording still works), a file-backed registry (`SwitchRegistry`,
-   `sdmc:/switch/Bejeweled/registry.dat`), pthreads for the loading thread, a silent `NullSoundManager`, the error
+   `sdmc:/switch/Bejeweled/registry.dat`), a worker thread for loading, a silent `NullSoundManager`, the error
    applet for `Popup`. InternetManager/BetaSupport/update checks are gone. The log goes to
    `sdmc:/switch/Bejeweled/bejeweled.log` (or to `nxlink -s` in debug builds).
 3. **Platform layer: video + input + main loop.** `DDInterface`/`DDImage` on SDL2, SexyAppBase's loop on SDL events,
    touch/controller → mouse/keys, file layer on RomFS. Goal: title screen, then a full game, in Eden.
+   Done: a game plays in Eden by touch and by controller. Touch is a mouse that only hovers while a finger is down;
+   the left stick/d-pad steer a software cursor (shown only while the controller is in use), A/R/ZR click, B is
+   Escape, + pauses. The loading thread runs on another core (`SwitchPlatform::StartWorkerThread`: Horizon doesn't
+   time-slice equal-priority threads on one core, so the title screen couldn't draw), and the loading bar fills over
+   ~0.6 s since RomFS loads in a fraction of a second. Fixed on the way: `DescParser` erasing from an empty string
+   (libstdc++ memmoves gigabytes), legacy image fonts opening `data\…` without the RomFS path mapping (no score).
+   Testing: `<app data>/autoinput.txt` scripts taps, drags, pad buttons, the stick, the game's own hint move and
+   screenshots (see `SexyAppBase::LoadAutoInput`; `tools/run_eden.ps1 -AutoInput -Shots`).
 4. **Audio.** SoundManager/SoundInstance mixer and the libmodplug MusicInterface with fades.
 5. **Saves.** Registry and high scores (`userdata/hiscores.dat` seeded from RomFS) in `sdmc:/switch/Bejeweled/`.
 6. **Hardware pass.** Docked/handheld resolution, home-menu suspend (pause audio), applet exit, performance (60 fps).

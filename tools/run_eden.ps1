@@ -8,6 +8,8 @@
 #   -AutoInput  scripted input for the game (format: SexyAppBase::LoadAutoInput), installed for this run only
 #   -Shots    copy the game's own screenshots (the script's 'shot' command) here afterwards
 #   -Fresh    delete the saved game first, so the run starts without the resume dialog
+#   -Handheld run in handheld mode (1280x720) instead of Eden's docked default (1920x1080), by editing
+#             eden's sdl2-config.ini for this run
 # Eden is looked up in $env:EDEN_DIR, then ~\Downloads\eden. Its SD card is %APPDATA%\eden\sdmc.
 param(
     [string]$Nro = "$PSScriptRoot\..\build\hello.nro",
@@ -17,7 +19,8 @@ param(
     [string]$Shot = '',
     [string]$AutoInput = '',
     [string]$Shots = '',
-    [switch]$Fresh
+    [switch]$Fresh,
+    [switch]$Handheld
 )
 $ErrorActionPreference = 'Stop'
 $edenDir = if ($env:EDEN_DIR) { $env:EDEN_DIR } else { Join-Path $env:USERPROFILE 'Downloads\eden' }
@@ -34,21 +37,33 @@ if ($Fresh) { Remove-Item (Join-Path $dataDir 'userdata\savegame.dat') -ErrorAct
 if ($AutoInput) { New-Item -ItemType Directory -Force $dataDir | Out-Null; Copy-Item $AutoInput $autoPath -Force }
 Get-Process eden-cli -ErrorAction SilentlyContinue | Stop-Process -Force
 
-$argList = @('-g', "`"$Nro`"")
-if ($Args) { $argList += @('-p', "`"$Args`"") }
-$p = Start-Process $eden -ArgumentList $argList -PassThru
-$deadline = (Get-Date).AddSeconds($Seconds)
-while (-not $p.HasExited -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 500 }
-
-if (-not $p.HasExited) {
-    $p.Refresh()
-    "eden: $($p.MainWindowTitle)"
-    if ($Shot) { & "$PSScriptRoot\screenshot_window.ps1" -ProcessId $p.Id -Out $Shot }
-    Stop-Process -Id $p.Id -Force
-} else {
-    "eden exited by itself (code $($p.ExitCode))"
+$configPath = Join-Path $env:APPDATA 'eden\config\sdl2-config.ini'
+$savedConfig = $null
+if ($Handheld) {
+    $savedConfig = [IO.File]::ReadAllText($configPath)
+    $config = $savedConfig -replace '(?m)^use_docked_mode\\default=.*$', 'use_docked_mode\default=false' -replace '(?m)^use_docked_mode=.*$', 'use_docked_mode=0'
+    [IO.File]::WriteAllText($configPath, $config)
 }
-Start-Sleep -Milliseconds 500
+
+try {
+    $argList = @('-g', "`"$Nro`"")
+    if ($Args) { $argList += @('-p', "`"$Args`"") }
+    $p = Start-Process $eden -ArgumentList $argList -PassThru
+    $deadline = (Get-Date).AddSeconds($Seconds)
+    while (-not $p.HasExited -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 500 }
+
+    if (-not $p.HasExited) {
+        $p.Refresh()
+        "eden: $($p.MainWindowTitle)"
+        if ($Shot) { & "$PSScriptRoot\screenshot_window.ps1" -ProcessId $p.Id -Out $Shot }
+        Stop-Process -Id $p.Id -Force
+    } else {
+        "eden exited by itself (code $($p.ExitCode))"
+    }
+    Start-Sleep -Milliseconds 500
+} finally {
+    if ($null -ne $savedConfig) { [IO.File]::WriteAllText($configPath, $savedConfig) }
+}
 Remove-Item $autoPath -ErrorAction SilentlyContinue
 if ($Shots -and (Test-Path $shotDir)) {
     New-Item -ItemType Directory -Force $Shots | Out-Null

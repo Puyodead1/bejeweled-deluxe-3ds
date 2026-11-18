@@ -595,6 +595,8 @@ public:
 	virtual void			ProcessSDLEvents();
 	void					PushMessage(UINT theMessage, WPARAM wParam, LPARAM lParam);
 	void					MovePointer(int theX, int theY, bool fromController);
+	void					SetAppActive(bool isActive);
+	void					NoteFrameTimes(uint64_t theDrawUs, uint64_t thePresentStartUs, uint64_t thePresentEndUs);
 	void					UpdateControllerPointer(DWORD theElapsed);
 	void					OpenControllers();
 	void					HandleControllerButton(int theButton, bool isDown);

@@ -11,6 +11,71 @@
 static bool gRomfsMounted = false;
 static int gNxlinkSocket = -1;
 
+static AppletHookCookie gAppletHookCookie;
+static int gAppletEvents = 0;
+static bool gInFocus = true;
+
+// Runs on the main thread, from appletMainLoop inside SDL_PollEvent.
+static void AppletHook(AppletHookType theHook, void* theParam)
+{
+	switch (theHook)
+	{
+	case AppletHookType_OnFocusState:
+	{
+		bool inFocus = appletGetFocusState() == AppletFocusState_InFocus;
+		fprintf(stderr, "applet: focus state %d\n", (int)appletGetFocusState());
+		if (inFocus != gInFocus)
+		{
+			gInFocus = inFocus;
+			gAppletEvents |= SwitchPlatform::APPLET_FOCUS_CHANGED;
+		}
+		break;
+	}
+	case AppletHookType_OnResume:
+		fprintf(stderr, "applet: resumed\n");
+		gAppletEvents |= SwitchPlatform::APPLET_RESUMED;
+		break;
+	case AppletHookType_OnOperationMode:
+		fprintf(stderr, "applet: %s\n", SwitchPlatform::IsDocked() ? "docked" : "handheld");
+		break;
+	default:
+		break;
+	}
+}
+
+int SwitchPlatform::TakeAppletEvents()
+{
+	int anEvents = gAppletEvents;
+	gAppletEvents = 0;
+	return anEvents;
+}
+
+bool SwitchPlatform::IsInFocus()
+{
+	return gInFocus;
+}
+
+bool SwitchPlatform::IsDocked()
+{
+	return appletGetOperationMode() == AppletOperationMode_Console;
+}
+
+void SwitchPlatform::SimulateFocus(bool inFocus)
+{
+	if (inFocus != gInFocus)
+	{
+		gInFocus = inFocus;
+		gAppletEvents |= APPLET_FOCUS_CHANGED;
+		if (inFocus)
+			gAppletEvents |= APPLET_RESUMED;
+	}
+}
+
+uint64_t SwitchPlatform::MicroTime()
+{
+	return armTicksToNs(armGetSystemTick()) / 1000;
+}
+
 void SwitchPlatform::Init()
 {
 #ifndef NDEBUG
@@ -38,6 +103,11 @@ void SwitchPlatform::Init()
 	// Closing the game from the HOME menu: hold the exit (up to 15 s) so SDL turns it into SDL_QUIT and the game
 	// shuts down normally, saving the board and settings, instead of being killed.
 	appletLockExit();
+
+	// Focus and suspend/resume (see TakeAppletEvents). libnx's default focus handling stays: the system suspends us
+	// while the HOME menu is up or the console sleeps, and we still hear about every focus change.
+	gInFocus = appletGetFocusState() == AppletFocusState_InFocus;
+	appletHook(&gAppletHookCookie, AppletHook, NULL);
 
 	Result aResult = romfsInit();
 	gRomfsMounted = R_SUCCEEDED(aResult);
@@ -113,6 +183,7 @@ void SwitchPlatform::Exit()
 		gNxlinkSocket = -1;
 	}
 
+	appletUnhook(&gAppletHookCookie);
 	appletUnlockExit();
 }
 

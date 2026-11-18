@@ -99,8 +99,16 @@ void WinDMApp::ModalClose()
 
 void WinDMApp::GotFocus()
 {
-	if (mBoard != NULL)
-		mBoard->Unpause(mTimeTrial);
+	if (mBoard == NULL)
+		return;
+
+	// Switch port: focus comes back after the HOME menu or sleep, when the player may not be holding the console
+	// yet. If losing focus was the only reason a timed game is paused, leave it on "click here to continue" (the
+	// pause LostFocus made is a user pause, which a tap undoes in Board::MouseDown); the PC resumed at once.
+	if (mTimeTrial && mBoard->mPauseCount == 1 && mBoard->mUserPauseCount == 1)
+		return;
+
+	mBoard->Unpause(mTimeTrial);
 }
 
 // FUNCTION: GAME 0x40be19

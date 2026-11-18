@@ -15,8 +15,8 @@ DDInterface::DDInterface(SexyAppBase* theApp)
 	mWidth = theApp->mWidth;
 	mHeight = theApp->mHeight;
 	mAspect.Set(mWidth, mHeight);
-	mDisplayWidth = 1280;
-	mDisplayHeight = 720;
+	mDisplayWidth = 0;
+	mDisplayHeight = 0;
 	mRefreshRate = 60;
 	mMillisecondsPerFrame = 1000 / mRefreshRate;
 
@@ -145,6 +145,8 @@ void DDInterface::UpdatePresentationRect()
 		aWindowWidth = 1280;
 		aWindowHeight = 720;
 	}
+	if (aWindowWidth != mDisplayWidth || aWindowHeight != mDisplayHeight)
+		fprintf(stderr, "video: output %dx%d\n", aWindowWidth, aWindowHeight);
 	mDisplayWidth = aWindowWidth;
 	mDisplayHeight = aWindowHeight;
 

@@ -2043,6 +2043,42 @@ static PerfTimer gFPSTimer;
 static int gFrameCount;
 static int gFPSDisplay;
 static bool gForceDisplay = false;
+// Switch port: frame timing, logged every 10 s. Per shown frame: drawing the widgets into the 640x480 image
+// (software), and Redraw (texture upload + present, which waits for vsync); plus the longest gap between two presents
+// and the game updates run (100 a second when keeping up).
+void SexyAppBase::NoteFrameTimes(uint64_t theDrawUs, uint64_t thePresentStartUs, uint64_t thePresentEndUs)
+{
+	static uint64_t aPeriodStartUs = 0, aLastPresentEndUs = 0;
+	static uint64_t aDrawUs = 0, aPresentUs = 0, aMaxGapUs = 0;
+	static int aFrames = 0, aStartUpdateCount = 0;
+
+	if (aPeriodStartUs == 0)
+	{
+		aPeriodStartUs = thePresentEndUs;
+		aLastPresentEndUs = thePresentEndUs;
+		aStartUpdateCount = mUpdateCount;
+		return;
+	}
+
+	aFrames++;
+	aDrawUs += theDrawUs;
+	aPresentUs += thePresentEndUs - thePresentStartUs;
+	aMaxGapUs = std::max(aMaxGapUs, thePresentEndUs - aLastPresentEndUs);
+	aLastPresentEndUs = thePresentEndUs;
+
+	uint64_t aPeriodUs = thePresentEndUs - aPeriodStartUs;
+	if (aPeriodUs >= 10000000)
+	{
+		fprintf(stderr, "perf: %.1f fps, draw %.2f ms, present %.2f ms, longest frame %.1f ms, %.0f updates/s\n",
+			aFrames * 1e6 / aPeriodUs, aDrawUs / 1000.0 / aFrames, aPresentUs / 1000.0 / aFrames, aMaxGapUs / 1000.0,
+			(mUpdateCount - aStartUpdateCount) * 1e6 / aPeriodUs);
+		aPeriodStartUs = thePresentEndUs;
+		aDrawUs = aPresentUs = aMaxGapUs = 0;
+		aFrames = 0;
+		aStartUpdateCount = mUpdateCount;
+	}
+}
+
 // FUNCTION: GAME187 0x446880
 static void CalculateFPS()
 {
@@ -2207,9 +2243,11 @@ bool SexyAppBase::DrawDirtyStuff()
 		return false;
 	}
 
+	uint64_t aDrawStartUs = SwitchPlatform::MicroTime();
 	mIsDrawing = true;
 	bool drewScreen = mWidgetManager->DrawScreen();
 	mIsDrawing = false;
+	uint64_t aDrawEndUs = SwitchPlatform::MicroTime();
 
 	if ((drewScreen || (aStartTime - mLastDrawTick >= 1000) || (mCustomCursorDirty)) &&
 		((int) (aStartTime - mNextDrawTick) >= 0))
@@ -2244,7 +2282,9 @@ bool SexyAppBase::DrawDirtyStuff()
 		DWORD aPreScreenBltTime = timeGetTime();
 		mLastDrawTick = aPreScreenBltTime;
 
+		uint64_t aPresentStartUs = SwitchPlatform::MicroTime();
 		Redraw(NULL);
+		NoteFrameTimes(aDrawEndUs - aDrawStartUs, aPresentStartUs, SwitchPlatform::MicroTime());
 
 		// This is our one UpdateFTimeAcc if we are vsynched
 		UpdateFTimeAcc();
@@ -2487,12 +2527,7 @@ void SexyAppBase::ProcessSDLEvents()
 
 		case SDL_WINDOWEVENT:
 			if (anEvent.window.event == SDL_WINDOWEVENT_FOCUS_GAINED || anEvent.window.event == SDL_WINDOWEVENT_FOCUS_LOST)
-			{
-				bool isActive = anEvent.window.event == SDL_WINDOWEVENT_FOCUS_GAINED;
-				if (!mPlayingDemoBuffer)
-					mActive = isActive;
-				PushMessage(WM_ACTIVATEAPP, isActive ? 1 : 0, 0);
-			}
+				SetAppActive(anEvent.window.event == SDL_WINDOWEVENT_FOCUS_GAINED);
 			else if (anEvent.window.event == SDL_WINDOWEVENT_SIZE_CHANGED || anEvent.window.event == SDL_WINDOWEVENT_RESIZED)
 			{
 				// Docking changes the output size: refit the picture and the touch mapping.
@@ -2590,6 +2625,17 @@ void SexyAppBase::ProcessSDLEvents()
 		}
 	}
 
+	// HOME menu, sleep, overlays: lose focus like a deactivated window did on the PC, which pauses the board and
+	// mutes. After a suspend, don't make up for the time we were stopped.
+	int anAppletEvents = SwitchPlatform::TakeAppletEvents();
+	if (!mShutdown)
+	{
+		if (anAppletEvents & SwitchPlatform::APPLET_FOCUS_CHANGED)
+			SetAppActive(SwitchPlatform::IsInFocus());
+		if (anAppletEvents & SwitchPlatform::APPLET_RESUMED)
+			ClearUpdateBacklog();
+	}
+
 	DWORD aTimeNow = GetTickCount();
 	if (!mShutdown)
 		UpdateControllerPointer(aTimeNow - mPadLastTick);
@@ -2602,6 +2648,15 @@ void SexyAppBase::ProcessSDLEvents()
 		aLastTimerPush = aTimeNow;
 		PushMessage(WM_TIMER, 100, 0);
 	}
+}
+
+// The window gained or lost focus (WM_ACTIVATEAPP on the PC); RehupFocus then pauses/mutes or resumes.
+void SexyAppBase::SetAppActive(bool isActive)
+{
+	fprintf(stderr, "focus: %s\n", isActive ? "gained" : "lost");
+	if (!mPlayingDemoBuffer)
+		mActive = isActive;
+	PushMessage(WM_ACTIVATEAPP, isActive ? 1 : 0, 0);
 }
 
 // Moves the pointer (window pixels) and tells the widgets. fromController shows the game's cursor; touch hides it.
@@ -2763,6 +2818,7 @@ void SexyAppBase::UpdateControllerPointer(DWORD theElapsed)
 //   <ms> shot                   screenshot to <app data>/_screenshots/
 //   <ms> rec <ms>               record the audio output to <app data>/_capture.raw (16-bit stereo, device rate)
 //   <ms> text <string>          type the rest of the line as characters (WM_CHAR), e.g. a high score name
+//   <ms> focus <0|1>            lose/regain focus as the HOME menu would (SwitchPlatform::SimulateFocus)
 //   <ms> quit
 // Lines starting with # are ignored.
 void SexyAppBase::LoadAutoInput()
@@ -2891,6 +2947,8 @@ void SexyAppBase::ProcessAutoInput()
 		}
 		else if (aCommand == "shot")
 			TakeScreenshot();
+		else if (aCommand == "focus")
+			SwitchPlatform::SimulateFocus(a1 != 0);
 		else if (aCommand == "rec")
 		{
 			SDLSoundManager* aSoundManager = dynamic_cast<SDLSoundManager*>(mSoundManager);
@@ -3740,8 +3798,12 @@ void SexyAppBase::MakeWindow()
 {
 	if (mHWnd == NULL)
 	{
+		// The screen's own size: 1920x1080 docked, 1280x720 handheld. SDL's Switch driver only follows docking for a
+		// resizable window (it then resizes it and sends SDL_WINDOWEVENT_SIZE_CHANGED), and it takes the mode at
+		// creation as the starting point, so the first size has to match it.
+		bool isDocked = SwitchPlatform::IsDocked();
 		SDL_Window* aWindow = SDL_CreateWindow(SexyStringToStringFast(mTitle).c_str(),
-			SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 1280, 720, SDL_WINDOW_FULLSCREEN);
+			SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, isDocked ? 1920 : 1280, isDocked ? 1080 : 720, SDL_WINDOW_RESIZABLE);
 		if (aWindow == NULL)
 		{
 			Popup(std::string("SDL_CreateWindow failed: ") + SDL_GetError());

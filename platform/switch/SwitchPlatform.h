@@ -4,10 +4,28 @@
 // Platform services that need libnx directly. Kept out of the framework headers because <switch.h> defines short
 // type names (u8, u32, Result, ...) that collide with game code.
 
+#include <stdint.h>
 #include <string>
 
 namespace SwitchPlatform
 {
+	// What the system told the game since the last call, as APPLET_* bits. SDL's Switch driver reports none of these
+	// (only the HOME-menu close, as SDL_QUIT, and docking when the window is resizable); libnx calls our hook from
+	// appletMainLoop, which SDL_PollEvent runs on the main thread.
+	enum
+	{
+		APPLET_FOCUS_CHANGED	= 1,	// IsInFocus() changed: HOME menu, sleep, an overlay or a library applet
+		APPLET_RESUMED			= 2,	// running again after the system suspended us (HOME menu / sleep)
+	};
+	int			TakeAppletEvents();
+	bool		IsInFocus();
+	bool		IsDocked();
+	// For emulators without a HOME menu: report a focus change as if the system had sent one.
+	void		SimulateFocus(bool inFocus);
+
+	// Microseconds from an arbitrary start, for timing.
+	uint64_t	MicroTime();
+
 	// Mounts RomFS (the game data) and, in debug builds, sends stdout/stderr to nxlink. Call first thing in main().
 	void		Init();
 	// Shuts SDL down and unmounts what Init mounted.

@@ -42,9 +42,9 @@ the game's own paths aren't consistent).
 ## Controls
 
 Touch works like the mouse did: tap a gem and then its neighbour, or drag one onto the other. With a controller the
-left stick moves a pointer and the d-pad steps it a gem at a time; A (or R/ZR) clicks, X shows a hint, + pauses
-(and plays again after a game), - opens Options and B backs out of a dialog. High score names are typed on the
-system keyboard.
+left stick moves a pointer and the d-pad steps it a gem at a time; A (or R/ZR) clicks, X shows a hint, Y pauses
+(and plays again after a game), - opens Options, B backs out of a dialog and + quits to the Homebrew Menu (a game
+in progress is saved). High score names are typed on the system keyboard.
 
 ## Running in Eden
 

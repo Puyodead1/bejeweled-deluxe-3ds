@@ -768,35 +768,35 @@ void WinDMApp::FinishLoading()
 void WinDMApp::SetSwitchStrings()
 {
 	SetString("CLICK_HERE_TO_PLAY", L"TAP HERE OR PRESS A TO PLAY!");
-	SetString("CLICK_HERE_TO_CONTINUE", L"Tap or Press + to Continue!");
-	SetString("HSWIDGET_CLICK_HERE_TO_PLAY_AGAIN", L"PRESS + TO PLAY AGAIN");
+	SetString("CLICK_HERE_TO_CONTINUE", L"Tap or Press Y to Continue!");
+	SetString("HSWIDGET_CLICK_HERE_TO_PLAY_AGAIN", L"PRESS Y TO PLAY AGAIN");
 	SetString("HSWIDGET_TIP0", L"TIP- You can drag a gem instead of tapping twice");
 	SetString("HSWIDGET_TIP6", L"TIP- You can drag a gem to swap it with another");
-	SetString("HSWIDGET_TIP7", L"TIP- Press + to pause the game in Timetrial mode");
+	SetString("HSWIDGET_TIP7", L"TIP- Press Y to pause the game in Timetrial mode");
 	SetString("HSWIDGET_TIP_DEFAULT", L"TIP- Stuck? Press X for a hint (it costs points)");
 
 	std::string aText = GetString("FULL_INSTRUCTIONS2");
 	size_t aPos = aText.find("Press any key to pause the game.");
 	if (aPos != std::string::npos)
-		aText.replace(aPos, 32, "Press + to pause the game.");
+		aText.replace(aPos, 32, "Press Y to pause the game.");
 	aPos = aText.find("CONTROLS - ");
 	if (aPos != std::string::npos)
 	{
 		aText.erase(aPos);
 		aText += "CONTROLS - Tap a gem, then tap an adjacent gem to swap them, or just drag a gem onto its "
 			"neighbor. With a controller, move with the left stick or the d-pad (a gem at a time) and press A. "
-			"X gives a hint, + pauses, - opens the options and B backs out of a dialog.";
+			"X gives a hint, Y pauses, - opens the options, B backs out of a dialog and + quits.";
 	}
 	SetString("FULL_INSTRUCTIONS2", StringToWString(aText));
 }
 
 // Switch port: controller shortcuts. Returning true takes the press (and its release) away from the framework's
-// default handling (A clicks, B is Escape, + is a key press, which pauses the board).
+// default handling (A clicks, B is Escape, Y is a key press, which pauses the board, + quits).
 bool WinDMApp::ControllerButton(int theButton)
 {
 	if (mTitleScreen != NULL)
 	{
-		if ((theButton == PAD_A || theButton == PAD_PLUS) && mTitleScreen->CanStart() && mDialogList.empty())
+		if (theButton == PAD_A && mTitleScreen->CanStart() && mDialogList.empty())
 		{
 			PlaySample(12);
 			FinishLoading();
@@ -827,8 +827,8 @@ bool WinDMApp::ControllerButton(int theButton)
 
 	if (mHighScoreWidget != NULL)
 	{
-		// Game over: + plays again, like the link.
-		if (theButton == PAD_PLUS)
+		// Game over: Y plays again, like the link.
+		if (theButton == PAD_Y)
 		{
 			PlaySample(12);
 			NewBoard();

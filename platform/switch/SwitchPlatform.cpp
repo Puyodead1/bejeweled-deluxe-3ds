@@ -1,6 +1,7 @@
 #include "SwitchPlatform.h"
 
 #include <switch.h>
+#include <arpa/inet.h>
 #include <SDL.h>
 #include <stdio.h>
 #include <unistd.h>
@@ -78,15 +79,14 @@ uint64_t SwitchPlatform::MicroTime()
 
 void SwitchPlatform::Init()
 {
-#ifndef NDEBUG
-	// Logs go to `nxlink -s` when the .nro was sent with it; harmless otherwise.
-	if (R_SUCCEEDED(socketInitializeDefault()))
+	// Logs go to `nxlink -s` when the .nro was sent with nxlink (the loader leaves the sender's address), in any
+	// build, so a release build on the console can be watched too. Started any other way, no sockets are set up.
+	if (__nxlink_host.s_addr != 0 && R_SUCCEEDED(socketInitializeDefault()))
 	{
 		gNxlinkSocket = nxlinkStdio();
 		if (gNxlinkSocket < 0)
 			socketExit();
 	}
-#endif
 
 	if (gNxlinkSocket < 0)
 	{

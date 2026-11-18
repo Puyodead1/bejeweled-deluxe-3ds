@@ -175,6 +175,8 @@ SexyAppBase::SexyAppBase()
 	mPadButtonDown = false;
 	mPadLastTick = 0;
 	mPadConsumed = 0;
+	mTouchFinger = 0;
+	mTouchDown = false;
 	mDPadX = 0;
 	mDPadY = 0;
 	mDPadNextStep = 0;
@@ -2547,7 +2549,32 @@ void SexyAppBase::ProcessSDLEvents()
 			}
 			break;
 
-		// Touch arrives here too: SDL turns the first finger into mouse events (which == SDL_TOUCH_MOUSEID).
+		// The touch screen: SDL's Switch driver turns off its touch-to-mouse events, so the first finger down is made
+		// the mouse here (HandleTouch), a mouse that only moves while the finger is down.
+		case SDL_FINGERDOWN:
+		case SDL_FINGERMOTION:
+		case SDL_FINGERUP:
+		{
+			int aWidth = 0, aHeight = 0;
+			SDL_GetWindowSize(mDDInterface->mWindow, &aWidth, &aHeight);
+			int aX = (int)(anEvent.tfinger.x * aWidth), aY = (int)(anEvent.tfinger.y * aHeight);
+			if (anEvent.type == SDL_FINGERDOWN)
+			{
+				if (mTouchDown)
+					break;
+				mTouchDown = true;
+				mTouchFinger = anEvent.tfinger.fingerId;
+			}
+			// (The driver's motion events carry the finger's slot rather than its id, so only lifts are matched.)
+			else if (!mTouchDown || (anEvent.type == SDL_FINGERUP && anEvent.tfinger.fingerId != mTouchFinger))
+				break;
+			if (anEvent.type == SDL_FINGERUP)
+				mTouchDown = false;
+			HandleTouch(anEvent.type, aX, aY);
+			break;
+		}
+
+		// A mouse, if there is one (SDL's touch-to-mouse events, which == SDL_TOUCH_MOUSEID, are off on the Switch).
 		case SDL_MOUSEMOTION:
 			// A finger only moves while it's down; a hovering mouse always counts.
 			if (anEvent.motion.which != SDL_TOUCH_MOUSEID || anEvent.motion.state != 0)
@@ -2702,6 +2729,27 @@ void SexyAppBase::MovePointer(int theX, int theY, bool fromController)
 	PushMessage(WM_MOUSEMOVE, 0, MAKELONG(theX, theY));
 }
 
+// The touching finger as the mouse, in window pixels: down moves the pointer there first (no hover before a touch),
+// and a lifted finger isn't over anything any more, so hover highlights go away (the next WM_TIMER sees it).
+void SexyAppBase::HandleTouch(int theType, int theX, int theY)
+{
+	LPARAM aPos = MAKELONG(theX, theY);
+	switch (theType)
+	{
+	case SDL_FINGERDOWN:
+		MovePointer(theX, theY, false);
+		PushMessage(WM_LBUTTONDOWN, 0, aPos);
+		break;
+	case SDL_FINGERMOTION:
+		MovePointer(theX, theY, false);
+		break;
+	case SDL_FINGERUP:
+		PushMessage(WM_LBUTTONUP, 0, aPos);
+		mPointerIn = false;
+		break;
+	}
+}
+
 void SexyAppBase::OpenControllers()
 {
 	int aCount = std::min(SDL_NumJoysticks(), (int)(sizeof(mGameControllers) / sizeof(mGameControllers[0])));
@@ -2777,10 +2825,21 @@ void SexyAppBase::HandleControllerButton(int theButton, bool isDown)
 			PushKeyPress(KEYCODE_ESCAPE, KEYCODE_ESCAPE);
 		break;
 
-	case PAD_PLUS:
+	case PAD_Y:
 		// Any character pauses the board.
 		if (isDown)
 			PushKeyPress(KEYCODE_SPACE, ' ');
+		break;
+
+	case PAD_PLUS:
+		// Back to the Homebrew Menu, the usual + for homebrew: a normal shutdown, as closing from HOME is, so the
+		// game in progress and the settings are saved.
+		if (isDown)
+		{
+			fprintf(stderr, "input: + quits\n");
+			PushMessage(WM_CLOSE, 0, 0);
+			CloseRequestAsync();
+		}
 		break;
 	}
 }
@@ -2903,7 +2962,7 @@ void SexyAppBase::UpdateControllerPointer(DWORD theElapsed)
 // after a delay in milliseconds from the previous one; positions are in game pixels (640x480):
 //   <ms> tap <x> <y>            touch down and up
 //   <ms> down|move|up <x> <y>   touch down, drag, lift
-//   <ms> pad <button> down|up   joystick button number (0 = A, 1 = B, 2 = X, 10 = +, 11 = -, 12-15 = d-pad
+//   <ms> pad <button> down|up   joystick button number (0 = A, 1 = B, 2 = X, 3 = Y, 10 = +, 11 = -, 12-15 = d-pad
 //                               left/up/right/down, held until its "up")
 //   <ms> stick <dx> <dy> <ms>   hold the left stick at dx,dy (-1..1) for a while
 //   <ms> hint | hintdrag        make the game's hinted move by two taps or by a drag (GetAutoInputMove)
@@ -2964,37 +3023,33 @@ void SexyAppBase::ProcessAutoInput()
 		std::string aCommand = aCmd;
 		if (aCommand == "tap" || aCommand == "down" || aCommand == "move" || aCommand == "up")
 		{
+			// As the touch screen sends them: finger events, positions as fractions of the window.
 			if (aNumArgs < 2)
 				continue;
 
+			int aWidth = 0, aHeight = 0;
+			SDL_GetWindowSize(mDDInterface->mWindow, &aWidth, &aHeight);
 			SDL_Event anEvent;
 			SDL_zero(anEvent);
+			anEvent.tfinger.touchId = 1;
+			anEvent.tfinger.fingerId = 0;
+			anEvent.tfinger.x = (aWinX + 0.5f) / aWidth;
+			anEvent.tfinger.y = (aWinY + 0.5f) / aHeight;
+			anEvent.tfinger.pressure = 1.0f;
 			if (aCommand == "move")
 			{
-				anEvent.type = SDL_MOUSEMOTION;
-				anEvent.motion.which = SDL_TOUCH_MOUSEID;
-				anEvent.motion.state = SDL_BUTTON_LMASK;
-				anEvent.motion.x = aWinX;
-				anEvent.motion.y = aWinY;
+				anEvent.type = SDL_FINGERMOTION;
 				SDL_PushEvent(&anEvent);
 				continue;
 			}
-
-			anEvent.button.which = SDL_TOUCH_MOUSEID;
-			anEvent.button.button = SDL_BUTTON_LEFT;
-			anEvent.button.clicks = 1;
-			anEvent.button.x = aWinX;
-			anEvent.button.y = aWinY;
 			if (aCommand != "up")
 			{
-				anEvent.type = SDL_MOUSEBUTTONDOWN;
-				anEvent.button.state = SDL_PRESSED;
+				anEvent.type = SDL_FINGERDOWN;
 				SDL_PushEvent(&anEvent);
 			}
 			if (aCommand != "down")
 			{
-				anEvent.type = SDL_MOUSEBUTTONUP;
-				anEvent.button.state = SDL_RELEASED;
+				anEvent.type = SDL_FINGERUP;
 				SDL_PushEvent(&anEvent);
 			}
 		}
@@ -5005,6 +5060,11 @@ void SexyAppBase::Init()
 		Popup(std::string("SDL_Init failed: ") + SDL_GetError());
 		DoExit(1);
 	}
+
+	// SDL's Switch driver has a fixed list of pads and never announces them with SDL_JOYDEVICEADDED, so open them
+	// here; a pad that isn't open sends no events.
+	OpenControllers();
+	fprintf(stderr, "input: %d controllers\n", SDL_NumJoysticks());
 
 	InitPropertiesHook();
 	ReadFromRegistry();

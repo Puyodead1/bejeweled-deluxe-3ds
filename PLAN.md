@@ -22,7 +22,7 @@ src/game  ->  SexyAppBase / SexyApp  ->  platform/switch
 The class names `DDInterface`/`DDImage` stay, so game code needs few edits.
 
 Input: touchscreen = mouse (tap to select, drag to swap); stick/D-pad moves a cursor; A = click, B = back,
-+ = pause, - = options, X = hint. Trial/registration UI is removed: the port runs as the full game.
+Y = pause, - = options, X = hint, + = quit to hbmenu. Trial/registration UI is removed: the port runs as the full game.
 
 ## Libraries
 
@@ -113,6 +113,11 @@ one: either rename/drop the vendored copy and use 1.3.1 (libpng 1.0.5 only uses 
    - Frame timing: the log gets a `perf:` line every 10 s. In Eden: software draw 7.5-8.5 ms per frame, present
      17-21 ms, ~30 fps; the Phase 1 smoke test that drew nothing also ran at ~32 fps, so Eden's presentation is the
      limit there. On hardware: check that this reaches 60 fps and whether the software draw needs work.
+   - First console run: no input at all. SDL's Switch driver sends touches only as finger events (no mouse events),
+     and its joysticks are a fixed list with no device-added events, so nothing opened them. Fixed: SexyAppBase
+     handles SDL_FINGER* itself (one finger, scaled to the window, same pointer path as the mouse) and opens the
+     pads at startup. Autoinput taps now go in as finger events, so Eden tests the same path. Logs go to
+     `nxlink -s` in any build when the NRO was sent with nxlink.
    Still to check on hardware: HOME-menu close (saves) and suspend/resume, dock/undock while running, fps, audio
    queue length and feel.
 7. **Polish.** Remove trial/register/web UI, controller prompts where needed, cursor feel.
@@ -121,15 +126,16 @@ one: either rename/drop the vendored copy and use 1.3.1 (libpng 1.0.5 only uses 
      title screen's trial delay and register link, `OpenURL` and its "opening browser" dialogs, the update check.
      Options keeps the volume sliders, Help and High Scores; the Register button, the partner link ("Play More Great
      Games!"), Check for Updates, and the Fullscreen and Custom Cursors checkboxes are gone.
-   - Controller shortcuts (`WinDMApp::ControllerButton`, ahead of the framework's defaults): A or + on the title
-     starts; X is the hint orb; - opens Options (and closes it); + pauses, and plays again on the game-over screen;
+   - Controller shortcuts (`WinDMApp::ControllerButton`, ahead of the framework's defaults): A on the title
+     starts; X is the hint orb; - opens Options (and closes it); Y pauses, and plays again on the game-over screen;
+     + quits to the Homebrew Menu the way a HOME-menu close does (the board is saved);
      B answers the top dialog with No, or its only button (never on "continue your saved game?", where No deletes
      the save). A one-button dialog brings the pointer to its button.
    - Cursor: the d-pad moves the pointer a gem at a time on the board (`StepPointer`), first on the press, then
      every 110 ms after 300 ms held; off the board it glides as before. The stick is unchanged.
    - Wording: the PC strings that say click or "any key" are replaced in code after the properties load
      (`WinDMApp::SetSwitchStrings`), since the property files are copied from the install unchanged: the title's
-     play link, "Tap or Press + to Continue!", "PRESS + TO PLAY AGAIN", three tips, the pause and controls parts of
+     play link, "Tap or Press Y to Continue!", "PRESS Y TO PLAY AGAIN", three tips, the pause and controls parts of
      the instructions. The hint orb's hover picture has "CLICK HERE FOR A HINT" painted in; left as it is.
    - Name entry: the high score dialog opens the system keyboard (`SwitchPlatform::ShowKeyboard`) a moment
      after it appears and again on a tap on the name box; OK records the name (printable ASCII only, the fonts have

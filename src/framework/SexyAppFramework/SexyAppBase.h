@@ -250,6 +250,8 @@ public:
 	DWORD					mPadLastTick;
 	void*					mGameControllers[8];
 	int						mPadConsumed;			// buttons whose press ControllerButton took, so it gets the release
+	long long				mTouchFinger;			// the finger acting as the mouse, while mTouchDown
+	bool					mTouchDown;
 	int						mDPadX;					// d-pad direction held (-1, 0, 1) and when it steps again
 	int						mDPadY;
 	DWORD					mDPadNextStep;
@@ -605,6 +607,7 @@ public:
 	void					NoteFrameTimes(uint64_t theDrawUs, uint64_t thePresentStartUs, uint64_t thePresentEndUs);
 	void					UpdateControllerPointer(DWORD theElapsed);
 	void					OpenControllers();
+	void					HandleTouch(int theType, int theX, int theY);
 	void					HandleControllerButton(int theButton, bool isDown);
 	void					PushKeyPress(int theKeyCode, int theChar);
 	void					MovePointerToGame(int theGameX, int theGameY);

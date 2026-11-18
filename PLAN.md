@@ -83,16 +83,17 @@ one: either rename/drop the vendored copy and use 1.3.1 (libpng 1.0.5 only uses 
    before the console's own output. 512 frames can't be used in Eden: it wakes the audio thread only every
    10–30 ms and then takes ~36k frames/s. `tools/run_eden.ps1 -Fresh` deletes the saved game so scripted runs don't
    open on the resume dialog.
-5. **Saves.** Registry and high scores (`userdata/hiscores.dat` seeded from RomFS) in `sdmc:/switch/Bejeweled/`.
-   Done: `WinDMApp::Init` seeds any missing `userdata` file from `romfs:/userdata` (the PC's MigrationManager copied
-   the install's folder the same way). Saved game, high scores and registry are written to `<file>.tmp` and moved
+5. **Saves.** Registry and high scores (`userdata/hiscores.dat`) in `sdmc:/switch/Bejeweled/`.
+   Done: nothing is seeded. The Steam install has no `userdata` folder (the default table, Ace 1000 down to Wim 600,
+   is built into `HighScoreWidget`; the PC's MigrationManager copies an install's folder only if there is one),
+   so `pack_data.ps1` doesn't pack one. Saved game, high scores and registry are written to `<file>.tmp` and moved
    into place (`SwitchPlatform::CommitFile`); since FAT can't rename over a file, `SwitchPlatform::RecoverFiles` at
    startup finishes a move that was cut short or drops an unfinished .tmp. `WriteToRegistry` writes the registry
    file once instead of once per value (`SwitchRegistry::Batch`). `appletLockExit` holds a HOME-menu close long
-   enough for SDL's SDL_QUIT to run the normal shutdown (saves the board, writes settings). Verified in Eden: seeding,
+   enough for SDL's SDL_QUIT to run the normal shutdown (saves the board, writes settings). Verified in Eden:
    quit → resume restores the same board and score, both recovery cases, and a timed game's high score with a typed
    name (new autoinput `text` command) written with PC-compatible checksums. Not testable in Eden: the HOME-menu
-   close itself; check on hardware. The seeded scores are whatever the packed install's `hiscores.dat` holds.
+   close itself; check on hardware.
 6. **Hardware pass.** Docked/handheld resolution, home-menu suspend (pause audio), applet exit, performance (60 fps).
    Done so far (in Eden; the console itself still to check):
    - Resolution: the window is created resizable at the current mode's size, which is what SDL's Switch driver needs

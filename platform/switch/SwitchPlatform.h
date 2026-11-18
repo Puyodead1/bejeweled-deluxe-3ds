@@ -46,10 +46,6 @@ namespace SwitchPlatform
 	std::string	TempFileName(const std::string& thePath);
 	bool		CommitFile(const std::string& thePath);
 	void		RecoverFiles(const std::string& theDir);
-
-	// Copies the files under theFromDir (recursively) to theToDir where theToDir doesn't have them yet. For seeding
-	// the save folder from RomFS, as the PC version's MigrationManager copied the install's userdata folder.
-	void		SeedFiles(const std::string& theFromDir, const std::string& theToDir);
 }
 
 #endif

@@ -258,69 +258,6 @@ void SwitchPlatform::RecoverFiles(const std::string& theDir)
 	}
 }
 
-static bool CopyOneFile(const std::string& theFrom, const std::string& theTo)
-{
-	FILE* anIn = fopen(theFrom.c_str(), "rb");
-	if (anIn == NULL)
-		return false;
-	std::string aTemp = SwitchPlatform::TempFileName(theTo);
-	FILE* anOut = fopen(aTemp.c_str(), "wb");
-	if (anOut == NULL)
-	{
-		fclose(anIn);
-		return false;
-	}
-
-	bool ok = true;
-	char aBuf[4096];
-	size_t aRead;
-	while ((aRead = fread(aBuf, 1, sizeof(aBuf), anIn)) > 0)
-	{
-		if (fwrite(aBuf, 1, aRead, anOut) != aRead)
-		{
-			ok = false;
-			break;
-		}
-	}
-	if (ferror(anIn))
-		ok = false;
-	fclose(anIn);
-	if (fclose(anOut) != 0)
-		ok = false;
-	if (!ok)
-	{
-		remove(aTemp.c_str());
-		return false;
-	}
-	return SwitchPlatform::CommitFile(theTo);
-}
-
-void SwitchPlatform::SeedFiles(const std::string& theFromDir, const std::string& theToDir)
-{
-	DIR* aDir = opendir(theFromDir.c_str());
-	if (aDir == NULL)
-		return;
-
-	std::vector<std::string> aNames;
-	while (struct dirent* anEntry = readdir(aDir))
-		aNames.push_back(anEntry->d_name);
-	closedir(aDir);
-
-	mkdir(theToDir.c_str(), 0777);
-	for (size_t i = 0; i < aNames.size(); i++)
-	{
-		const std::string& aName = aNames[i];
-		if (aName == "." || aName == "..")
-			continue;
-		std::string aFrom = theFromDir + "/" + aName;
-		std::string aTo = theToDir + "/" + aName;
-		if (IsDir(aFrom))
-			SeedFiles(aFrom, aTo);
-		else if (!Exists(aTo))
-			fprintf(stderr, "saves: seeding %s%s\n", aTo.c_str(), CopyOneFile(aFrom, aTo) ? "" : " failed");
-	}
-}
-
 void SwitchPlatform::ShowError(const std::string& theTitle, const std::string& theText)
 {
 	fprintf(stderr, "[%s] %s\n", theTitle.c_str(), theText.c_str());

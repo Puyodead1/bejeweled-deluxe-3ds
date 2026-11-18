@@ -8,7 +8,9 @@ param([string]$GameDir = 'J:\SteamLibrary\steamapps\common\Bejeweled Deluxe')
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 $out = Join-Path $root 'romfs'
-$folders = 'data', 'images', 'music', 'properties', 'sounds', 'userdata'
+# Not userdata\: the game doesn't ship one (the default high scores are built in); a userdata folder in an install
+# is someone's saved game and scores.
+$folders = 'data', 'images', 'music', 'properties', 'sounds'
 
 if (-not (Test-Path (Join-Path $GameDir 'images'))) { throw "No game data in '$GameDir' (expected an images folder)" }
 if (Test-Path $out) { Remove-Item $out -Recurse -Force }

@@ -20,6 +20,18 @@ namespace SwitchPlatform
 
 	// Shows the system error applet with a title line and details; returns when the user dismisses it.
 	void		ShowError(const std::string& theTitle, const std::string& theText);
+
+	// Saves are written whole to TempFileName(path) and then moved over the real file by CommitFile, so a crash or a
+	// pulled SD card mid-write leaves the old file rather than a truncated one. The SD card's FAT can't rename over a
+	// file, so there is a moment with only the .tmp; RecoverFiles (at startup) finishes such a move, and deletes a
+	// .tmp whose real file still exists (a write that didn't finish).
+	std::string	TempFileName(const std::string& thePath);
+	bool		CommitFile(const std::string& thePath);
+	void		RecoverFiles(const std::string& theDir);
+
+	// Copies the files under theFromDir (recursively) to theToDir where theToDir doesn't have them yet. For seeding
+	// the save folder from RomFS, as the PC version's MigrationManager copied the install's userdata folder.
+	void		SeedFiles(const std::string& theFromDir, const std::string& theToDir);
 }
 
 #endif

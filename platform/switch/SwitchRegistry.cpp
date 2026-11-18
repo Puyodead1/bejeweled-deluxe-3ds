@@ -32,6 +32,8 @@ namespace
 	KeyMap					gKeys;
 	std::string				gFile = "sdmc:/switch/Bejeweled/registry.dat";
 	bool					gLoaded = false;
+	int						gBatchDepth = 0;
+	bool					gDirty = false;
 
 	std::string Normalize(const std::string& theKey)
 	{
@@ -98,6 +100,13 @@ namespace
 
 	void Save()
 	{
+		if (gBatchDepth > 0)
+		{
+			gDirty = true;
+			return;
+		}
+		gDirty = false;
+
 		MakeDirs(gFile);
 
 		std::string aTemp = gFile + ".tmp";
@@ -115,8 +124,14 @@ namespace
 				fputc('\n', aFP);
 			}
 		}
-		fclose(aFP);
+		bool ok = !ferror(aFP);
+		if (fclose(aFP) != 0 || !ok)
+		{
+			remove(aTemp.c_str());
+			return;
+		}
 
+		// FAT can't rename over a file; SwitchPlatform::RecoverFiles finishes this if it's cut short.
 		remove(gFile.c_str());
 		rename(aTemp.c_str(), gFile.c_str());
 	}
@@ -232,4 +247,17 @@ bool SwitchRegistry::GetSubKeys(const std::string& theKey, std::vector<std::stri
 			theSubKeys->push_back(aRest);
 	}
 	return exists;
+}
+
+SwitchRegistry::Batch::Batch()
+{
+	gMutex.lock();
+	gBatchDepth++;
+}
+
+SwitchRegistry::Batch::~Batch()
+{
+	if (--gBatchDepth == 0 && gDirty)
+		Save();
+	gMutex.unlock();
 }

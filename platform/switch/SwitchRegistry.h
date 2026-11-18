@@ -18,6 +18,14 @@ namespace SwitchRegistry
 	bool		DeleteKey(const std::string& theKey);
 	bool		DeleteValue(const std::string& theKey, const std::string& theValueName);
 	bool		GetSubKeys(const std::string& theKey, std::vector<std::string>* theSubKeys);
+
+	// While one of these is alive, changes are kept in memory and the file is rewritten once at the end, instead of
+	// once per value (WriteToRegistry sets a dozen values in a row).
+	struct Batch
+	{
+		Batch();
+		~Batch();
+	};
 }
 
 #endif

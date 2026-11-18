@@ -473,6 +473,10 @@ void WinDMApp::Init()
 {
 	SexyApp::Init();
 
+	// 1.87 moved userdata (high scores, saved game) into the per-user folder with MigrationManager, copying the
+	// install's copy the first time. Switch port: the install's copy is in RomFS; any file not saved yet is seeded.
+	SwitchPlatform::SeedFiles("romfs:/userdata", GetAppDataFolder() + "userdata");
+
 	LoadProperties();
 
 	DIALOG_YES_STRING = GetString("DIALOG_BUTTON_YES");

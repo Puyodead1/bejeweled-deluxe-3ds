@@ -14,6 +14,7 @@
 #include "SexyAppFramework/DDImage.h"
 #include "SexyAppFramework/Color.h"
 #include "SexyAppFramework/Common.h"
+#include "SwitchPlatform.h"
 
 using namespace Sexy;
 
@@ -148,9 +149,11 @@ void HighScoreWidget::Load()
 // FUNCTION: GAME187 0x4cf1b4
 void HighScoreWidget::Save()
 {
-	unlink((GetAppDataFolder() + "userdata/hiscores.dat").c_str());
+	// Switch port: written to a temporary file and moved over the old one at the end, instead of deleting the old one
+	// first, so an interrupted save keeps the previous scores.
+	std::string aFileName = GetAppDataFolder() + "userdata/hiscores.dat";
 	MkDir(GetAppDataFolder() + "userdata");
-	FILE* aFP = fopen((GetAppDataFolder() + "userdata/hiscores.dat").c_str(), "wb");
+	FILE* aFP = fopen(SwitchPlatform::TempFileName(aFileName).c_str(), "wb");
 	if (aFP == NULL)
 	{
 		mApp->Popup("Failed to create high score file!\nPlease report to support@popcap.com.");
@@ -188,7 +191,13 @@ void HighScoreWidget::Save()
 		}
 	}
 
-	fclose(aFP);
+	bool aSuccess = !ferror(aFP);
+	if (fclose(aFP) != 0)
+		aSuccess = false;
+	if (aSuccess)
+		SwitchPlatform::CommitFile(aFileName);
+	else
+		remove(SwitchPlatform::TempFileName(aFileName).c_str());
 }
 
 // FUNCTION: GAME 0x406ae4

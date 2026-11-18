@@ -5,6 +5,8 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <sys/stat.h>
+#include <dirent.h>
+#include <vector>
 
 static bool gRomfsMounted = false;
 static int gNxlinkSocket = -1;
@@ -29,6 +31,13 @@ void SwitchPlatform::Init()
 		if (freopen("sdmc:/switch/Bejeweled/bejeweled.log", "w", stderr) != NULL)
 			setvbuf(stderr, NULL, _IOLBF, 1024);
 	}
+
+	// Finish or drop any save write a crash or power cut interrupted (see CommitFile).
+	RecoverFiles("sdmc:/switch/Bejeweled");
+
+	// Closing the game from the HOME menu: hold the exit (up to 15 s) so SDL turns it into SDL_QUIT and the game
+	// shuts down normally, saving the board and settings, instead of being killed.
+	appletLockExit();
 
 	Result aResult = romfsInit();
 	gRomfsMounted = R_SUCCEEDED(aResult);
@@ -102,6 +111,142 @@ void SwitchPlatform::Exit()
 		close(gNxlinkSocket);
 		socketExit();
 		gNxlinkSocket = -1;
+	}
+
+	appletUnlockExit();
+}
+
+std::string SwitchPlatform::TempFileName(const std::string& thePath)
+{
+	return thePath + ".tmp";
+}
+
+bool SwitchPlatform::CommitFile(const std::string& thePath)
+{
+	std::string aTemp = TempFileName(thePath);
+	remove(thePath.c_str());
+	if (rename(aTemp.c_str(), thePath.c_str()) != 0)
+	{
+		fprintf(stderr, "can't move %s into place\n", aTemp.c_str());
+		return false;
+	}
+	return true;
+}
+
+static bool IsDir(const std::string& thePath)
+{
+	struct stat aStat;
+	return stat(thePath.c_str(), &aStat) == 0 && S_ISDIR(aStat.st_mode);
+}
+
+static bool Exists(const std::string& thePath)
+{
+	struct stat aStat;
+	return stat(thePath.c_str(), &aStat) == 0;
+}
+
+void SwitchPlatform::RecoverFiles(const std::string& theDir)
+{
+	DIR* aDir = opendir(theDir.c_str());
+	if (aDir == NULL)
+		return;
+
+	std::vector<std::string> aNames;
+	while (struct dirent* anEntry = readdir(aDir))
+		aNames.push_back(anEntry->d_name);
+	closedir(aDir);
+
+	std::string aBase = theDir;
+	if (!aBase.empty() && aBase[aBase.size() - 1] != '/')
+		aBase += '/';
+	for (size_t i = 0; i < aNames.size(); i++)
+	{
+		const std::string& aName = aNames[i];
+		if (aName == "." || aName == "..")
+			continue;
+		std::string aPath = aBase + aName;
+		if (IsDir(aPath))
+		{
+			RecoverFiles(aPath);
+			continue;
+		}
+		if (aName.size() <= 4 || aName.compare(aName.size() - 4, 4, ".tmp") != 0)
+			continue;
+
+		std::string aReal = aPath.substr(0, aPath.size() - 4);
+		if (Exists(aReal))
+		{
+			fprintf(stderr, "saves: dropping unfinished %s\n", aPath.c_str());
+			remove(aPath.c_str());
+		}
+		else
+		{
+			fprintf(stderr, "saves: recovering %s\n", aReal.c_str());
+			rename(aPath.c_str(), aReal.c_str());
+		}
+	}
+}
+
+static bool CopyOneFile(const std::string& theFrom, const std::string& theTo)
+{
+	FILE* anIn = fopen(theFrom.c_str(), "rb");
+	if (anIn == NULL)
+		return false;
+	std::string aTemp = SwitchPlatform::TempFileName(theTo);
+	FILE* anOut = fopen(aTemp.c_str(), "wb");
+	if (anOut == NULL)
+	{
+		fclose(anIn);
+		return false;
+	}
+
+	bool ok = true;
+	char aBuf[4096];
+	size_t aRead;
+	while ((aRead = fread(aBuf, 1, sizeof(aBuf), anIn)) > 0)
+	{
+		if (fwrite(aBuf, 1, aRead, anOut) != aRead)
+		{
+			ok = false;
+			break;
+		}
+	}
+	if (ferror(anIn))
+		ok = false;
+	fclose(anIn);
+	if (fclose(anOut) != 0)
+		ok = false;
+	if (!ok)
+	{
+		remove(aTemp.c_str());
+		return false;
+	}
+	return SwitchPlatform::CommitFile(theTo);
+}
+
+void SwitchPlatform::SeedFiles(const std::string& theFromDir, const std::string& theToDir)
+{
+	DIR* aDir = opendir(theFromDir.c_str());
+	if (aDir == NULL)
+		return;
+
+	std::vector<std::string> aNames;
+	while (struct dirent* anEntry = readdir(aDir))
+		aNames.push_back(anEntry->d_name);
+	closedir(aDir);
+
+	mkdir(theToDir.c_str(), 0777);
+	for (size_t i = 0; i < aNames.size(); i++)
+	{
+		const std::string& aName = aNames[i];
+		if (aName == "." || aName == "..")
+			continue;
+		std::string aFrom = theFromDir + "/" + aName;
+		std::string aTo = theToDir + "/" + aName;
+		if (IsDir(aFrom))
+			SeedFiles(aFrom, aTo);
+		else if (!Exists(aTo))
+			fprintf(stderr, "saves: seeding %s%s\n", aTo.c_str(), CopyOneFile(aFrom, aTo) ? "" : " failed");
 	}
 }
 

@@ -1676,10 +1676,23 @@ bool SexyAppBase::WriteBytesToFile(const std::string& theFileName, const void *t
 		return true;
 	}
 
+	// Switch port: write a temporary file and move it into place, so an interrupted write can't truncate a save.
 	MkDir(GetFileDir(theFileName));
-	FILE* aFP = fopen(theFileName.c_str(), "w+b");
+	std::string aTempName = SwitchPlatform::TempFileName(theFileName);
+	FILE* aFP = fopen(aTempName.c_str(), "w+b");
+	bool aSuccess = false;
+	if (aFP != NULL)
+	{
+		aSuccess = fwrite(theData, 1, theDataLen, aFP) == theDataLen;
+		if (fclose(aFP) != 0)
+			aSuccess = false;
+		if (aSuccess)
+			aSuccess = SwitchPlatform::CommitFile(theFileName);
+		else
+			remove(aTempName.c_str());
+	}
 
-	if (aFP == NULL)
+	if (!aSuccess)
 	{
 		if (mRecordingDemoBuffer)
 		{
@@ -1691,9 +1704,6 @@ bool SexyAppBase::WriteBytesToFile(const std::string& theFileName, const void *t
 
 		return false;
 	}
-
-	fwrite(theData, 1, theDataLen, aFP);
-	fclose(aFP);
 
 	if (mRecordingDemoBuffer)
 	{
@@ -1904,7 +1914,10 @@ void SexyAppBase::Shutdown()
 		RestoreScreenResolution();
 
 		if (mReadFromRegistry)
+		{
+			SwitchRegistry::Batch aBatch;	// Switch port: one file write for all the values
 			WriteToRegistry();
+		}
 
 		ImageLib::CloseJPEG2000();
 	}
@@ -2749,6 +2762,7 @@ void SexyAppBase::UpdateControllerPointer(DWORD theElapsed)
 //   <ms> hint | hintdrag        make the game's hinted move by two taps or by a drag (GetAutoInputMove)
 //   <ms> shot                   screenshot to <app data>/_screenshots/
 //   <ms> rec <ms>               record the audio output to <app data>/_capture.raw (16-bit stereo, device rate)
+//   <ms> text <string>          type the rest of the line as characters (WM_CHAR), e.g. a high score name
 //   <ms> quit
 // Lines starting with # are ignored.
 void SexyAppBase::LoadAutoInput()
@@ -2882,6 +2896,11 @@ void SexyAppBase::ProcessAutoInput()
 			SDLSoundManager* aSoundManager = dynamic_cast<SDLSoundManager*>(mSoundManager);
 			if (aSoundManager != NULL && aNumArgs >= 1)
 				aSoundManager->StartCapture(GetAppDataFolder() + "_capture.raw", (int)a1);
+		}
+		else if (aCommand == "text")
+		{
+			for (const char* aChar = anArgs; *aChar != 0 && *aChar != '\r' && *aChar != '\n'; aChar++)
+				PushMessage(WM_CHAR, (unsigned char)*aChar, 0);
 		}
 		else if (aCommand == "quit")
 		{
@@ -4417,7 +4436,10 @@ void SexyAppBase::Start()
 
 	PreTerminate();
 
-	WriteToRegistry();
+	{
+		SwitchRegistry::Batch aBatch;	// Switch port: one file write for all the values
+		WriteToRegistry();
+	}
 }
 
 // FUNCTION: GAME187 0x492f30

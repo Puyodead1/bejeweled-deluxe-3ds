@@ -47,7 +47,10 @@ const char* gSoundNames[21] = {
 };
 
 // GLOBAL: GAME 0x4f6548
-WinDMApp gWinDMApp;
+// Switch port: on the heap and deleted in main. As a plain global its destructor ran after main returned, freeing the
+// renderer, textures, sound and window after SwitchPlatform::Exit had shut SDL, audren and RomFS down, which the
+// console reports as a crash on every quit.
+WinDMApp& gWinDMApp = *new WinDMApp;
 
 // FUNCTION: GAME 0x40ba8c
 // FUNCTION: GAME187 0x4d43cc
@@ -59,6 +62,10 @@ int main(int argc, char* argv[])
 	gWinDMApp.Start();
 	gWinDMApp.Shutdown();
 
+	fprintf(stderr, "exit: freeing the app\n");
+	delete &gWinDMApp;
+
+	fprintf(stderr, "exit: platform\n");
 	SwitchPlatform::Exit();
 	return 0;
 }

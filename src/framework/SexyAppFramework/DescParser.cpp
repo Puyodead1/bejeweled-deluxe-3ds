@@ -442,10 +442,9 @@ bool DescParser::LoadDescriptor(const std::string& theFileName)
 	int aLineCount = 0;
 	bool hasErrors = false;
 
-	//Apparently VC6 doesn't have a clear() function for basic_strings
-	//mError.clear();
-	mError.erase();
-	mError.erase(mError.begin());
+	// The original also did mError.erase(mError.begin()) here, which MSVC's library let slide on an empty string;
+	// libstdc++ underflows the length and memmoves gigabytes.
+	mError.clear();
 
 	PFILE *aStream = p_fopen(theFileName.c_str(),"r");
 	if (aStream==NULL)

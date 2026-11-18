@@ -48,3 +48,7 @@ the game's own paths aren't consistent).
 It starts `eden-cli`, waits, saves a screenshot of the window, closes Eden and prints the app's log from
 `%APPDATA%\eden\sdmc\switch\Bejeweled\`. On hardware, copy the `.nro` to `sdmc:/switch/` and start it from the
 Homebrew Menu (title-override / full RAM mode recommended).
+
+The game logs to `sdmc:/switch/Bejeweled/bejeweled.log` (pass `-Log bejeweled.log`). Eden doesn't fault on wild
+pointers, it logs every unmapped access to `%APPDATA%\eden\log\eden_log.txt` and crawls on; check there when the game
+seems to hang. `tools\gdb_eden.ps1` runs the game under gdb through Eden's gdbstub (see the comment at its top).

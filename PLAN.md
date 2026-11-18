@@ -126,7 +126,7 @@ one: either rename/drop the vendored copy and use 1.3.1 (libpng 1.0.5 only uses 
      affected. Found with Atmosphère's crash report, which an nxlink-started game now prints at startup; reproduced in
      Eden by putting stdout on a UDP socket.
    - On the console: touch, A, the d-pad and the shortcuts work, Quit Game returns to hbmenu cleanly (+ takes the
-     same exit path). Frame
+     same exit path), and a high score name typed on the system keyboard is recorded. Frame
      timing: about 11 ms software draw + 5 ms present per drawn frame, 100 updates/s throughout (the game only
      redraws when something changes, so the fps figure varies with what's on screen).
    Still to check on hardware: HOME-menu close (saves) and suspend/resume, dock/undock while running, fps, audio

@@ -1,5 +1,5 @@
 # Run an .nro in the Eden emulator, then collect its log and a screenshot.
-# Usage: .\tools\run_eden.ps1 [-Nro build\hello.nro] [-Seconds 30] [-Args '--quit-after 20'] [-Log hello.log] [-Shot out.png]
+# Usage: .\tools\run_eden.ps1 [-Nro build\bejeweled.nro] [-Seconds 30] [-Args '--quit-after 20'] [-Log bejeweled.log] [-Shot out.png]
 #                             [-AutoInput script.txt] [-Shots dir]
 #   -Seconds  how long to wait before taking the screenshot and closing Eden (if the app hasn't quit by itself)
 #   -Args     passed to the homebrew's argv (eden-cli -p). Eden 0.2.1 doesn't deliver these (argc stays 0), so rely
@@ -12,10 +12,10 @@
 #             eden's sdl2-config.ini for this run
 # Eden is looked up in $env:EDEN_DIR, then ~\Downloads\eden. Its SD card is %APPDATA%\eden\sdmc.
 param(
-    [string]$Nro = "$PSScriptRoot\..\build\hello.nro",
+    [string]$Nro = "$PSScriptRoot\..\build\bejeweled.nro",
     [int]$Seconds = 30,
     [string]$Args = '',
-    [string]$Log = 'hello.log',
+    [string]$Log = 'bejeweled.log',
     [string]$Shot = '',
     [string]$AutoInput = '',
     [string]$Shots = '',

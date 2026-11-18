@@ -48,7 +48,6 @@ file(GLOB SEXY_SOURCES CONFIGURE_DEPENDS ${SEXY_DIR}/*.cpp)
 # SWTri_*.cpp are #included by SWTri.cpp; they aren't translation units.
 list(FILTER SEXY_SOURCES EXCLUDE REGEX "/SWTri_[^/]*\\.cpp$")
 file(GLOB PLATFORM_SOURCES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/platform/switch/*.cpp)
-list(FILTER PLATFORM_SOURCES EXCLUDE REGEX "/hello\\.cpp$")
 
 add_library(sexyframework STATIC
     ${SEXY_SOURCES}
@@ -70,24 +69,10 @@ add_executable(bejeweled ${GAME_SOURCES})
 target_include_directories(bejeweled PRIVATE ${CMAKE_SOURCE_DIR}/src/game)
 target_link_libraries(bejeweled PRIVATE sexyframework)
 
-# --- Phase 1: toolchain smoke test ------------------------------------------------------------------
-# Proves SDL2 video/audio/input, libmodplug and the packed romfs on hardware or in an emulator.
-add_executable(hello platform/switch/hello.cpp)
-target_link_libraries(hello PRIVATE nx_modplug nx_sdl2)
-
-nx_generate_nacp(hello.nacp NAME "Bejeweled Deluxe" AUTHOR "PopCap Games" VERSION "${PROJECT_VERSION}")
-
 set(ROMFS_DIR ${CMAKE_SOURCE_DIR}/romfs)
 if(NOT IS_DIRECTORY ${ROMFS_DIR})
     message(FATAL_ERROR "romfs/ is missing: run tools/pack_data.ps1 to copy the game data in")
 endif()
-
-nx_create_nro(hello
-    OUTPUT ${CMAKE_BINARY_DIR}/hello.nro
-    ICON ${CMAKE_SOURCE_DIR}/res/icon.jpg
-    NACP ${CMAKE_BINARY_DIR}/hello.nacp
-    ROMFS ${ROMFS_DIR}
-)
 
 nx_generate_nacp(bejeweled.nacp NAME "Bejeweled Deluxe" AUTHOR "PopCap Games" VERSION "${PROJECT_VERSION}")
 nx_create_nro(bejeweled

@@ -2,13 +2,13 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "SDLMusicInterface.h"
-#include "SDLSoundManager.h"
+#include "CtrMusicInterface.h"
+#include "CtrSoundManager.h"
 #include "../PakLib/PakInterface.h"
 
 using namespace Sexy;
 
-SDLMusicInfo::SDLMusicInfo()
+CtrMusicInfo::CtrMusicInfo()
 {
 	mFile = NULL;
 	mVolume = 0.0;
@@ -20,7 +20,7 @@ SDLMusicInfo::SDLMusicInfo()
 	mLoop = true;
 }
 
-SDLMusicInterface::SDLMusicInterface(SDLSoundManager* theSoundManager)
+CtrMusicInterface::CtrMusicInterface(CtrSoundManager* theSoundManager)
 {
 	mSoundManager = theSoundManager;
 	mGlobalVolume = 1.0;
@@ -40,26 +40,26 @@ SDLMusicInterface::SDLMusicInterface(SDLSoundManager* theSoundManager)
 		mSoundManager->SetMusicMixer(MixCallback, this);
 }
 
-SDLMusicInterface::~SDLMusicInterface()
+CtrMusicInterface::~CtrMusicInterface()
 {
 	if (mSoundManager != NULL)
 		mSoundManager->SetMusicMixer(NULL, NULL);
 	UnloadAllMusic();
 }
 
-void SDLMusicInterface::MixCallback(void* theUserData, int32_t* theBuffer, int theFrames)
+void CtrMusicInterface::MixCallback(void* theUserData, int32_t* theBuffer, int theFrames)
 {
-	((SDLMusicInterface*)theUserData)->Mix(theBuffer, theFrames);
+	((CtrMusicInterface*)theUserData)->Mix(theBuffer, theFrames);
 }
 
-void SDLMusicInterface::Mix(int32_t* theBuffer, int theFrames)
+void CtrMusicInterface::Mix(int32_t* theBuffer, int theFrames)
 {
 	if ((int)mRenderBuffer.size() < theFrames * 2)
 		mRenderBuffer.resize(theFrames * 2);
 
 	for (MusicMap::iterator anItr = mMusicMap.begin(); anItr != mMusicMap.end(); ++anItr)
 	{
-		SDLMusicInfo* anInfo = &anItr->second;
+		CtrMusicInfo* anInfo = &anItr->second;
 		if (!anInfo->mPlaying || anInfo->mPaused || anInfo->mFile == NULL)
 			continue;
 
@@ -93,7 +93,7 @@ void SDLMusicInterface::Mix(int32_t* theBuffer, int theFrames)
 	}
 }
 
-bool SDLMusicInterface::LoadMusic(int theSongId, const std::string& theFileName)
+bool CtrMusicInterface::LoadMusic(int theSongId, const std::string& theFileName)
 {
 	FILE* aFP = fopen(ResolveDataPath(theFileName).c_str(), "rb");
 	if (aFP == NULL)
@@ -121,11 +121,11 @@ bool SDLMusicInterface::LoadMusic(int theSongId, const std::string& theFileName)
 
 	UnloadMusic(theSongId);
 
-	SDLMusicInfo anInfo;
+	CtrMusicInfo anInfo;
 	anInfo.mFile = aFile;
 	if (mSoundManager != NULL)
 		mSoundManager->Lock();
-	SDLMusicInfo& aStored = mMusicMap[theSongId];
+	CtrMusicInfo& aStored = mMusicMap[theSongId];
 	aStored = anInfo;
 	aStored.mData.swap(aData);
 	if (mSoundManager != NULL)
@@ -134,7 +134,7 @@ bool SDLMusicInterface::LoadMusic(int theSongId, const std::string& theFileName)
 }
 
 // Called with the device locked. theOffset is an order number, or -1 to carry on from where the song stopped.
-void SDLMusicInterface::StartSong(SDLMusicInfo* theInfo, int theOffset, bool noLoop)
+void CtrMusicInterface::StartSong(CtrMusicInfo* theInfo, int theOffset, bool noLoop)
 {
 	if (theOffset == 0)
 		ModPlug_Seek(theInfo->mFile, 0);	// a full reset of tempo and channels, like BASS_MUSIC_POSRESET
@@ -145,13 +145,13 @@ void SDLMusicInterface::StartSong(SDLMusicInfo* theInfo, int theOffset, bool noL
 	theInfo->mPlaying = true;
 }
 
-void SDLMusicInterface::PlayMusic(int theSongId, int theOffset, bool noLoop)
+void CtrMusicInterface::PlayMusic(int theSongId, int theOffset, bool noLoop)
 {
 	MusicMap::iterator anItr = mMusicMap.find(theSongId);
 	if (anItr == mMusicMap.end())
 		return;
 
-	SDLMusicInfo* anInfo = &anItr->second;
+	CtrMusicInfo* anInfo = &anItr->second;
 	mSoundManager->Lock();
 	anInfo->mVolume = anInfo->mVolumeCap;
 	anInfo->mVolumeAdd = 0.0;
@@ -160,7 +160,7 @@ void SDLMusicInterface::PlayMusic(int theSongId, int theOffset, bool noLoop)
 	mSoundManager->Unlock();
 }
 
-void SDLMusicInterface::StopMusic(int theSongId)
+void CtrMusicInterface::StopMusic(int theSongId)
 {
 	MusicMap::iterator anItr = mMusicMap.find(theSongId);
 	if (anItr == mMusicMap.end())
@@ -172,7 +172,7 @@ void SDLMusicInterface::StopMusic(int theSongId)
 	mSoundManager->Unlock();
 }
 
-void SDLMusicInterface::StopAllMusic()
+void CtrMusicInterface::StopAllMusic()
 {
 	mSoundManager->Lock();
 	for (MusicMap::iterator anItr = mMusicMap.begin(); anItr != mMusicMap.end(); ++anItr)
@@ -183,7 +183,7 @@ void SDLMusicInterface::StopAllMusic()
 	mSoundManager->Unlock();
 }
 
-void SDLMusicInterface::UnloadMusic(int theSongId)
+void CtrMusicInterface::UnloadMusic(int theSongId)
 {
 	MusicMap::iterator anItr = mMusicMap.find(theSongId);
 	if (anItr == mMusicMap.end())
@@ -199,47 +199,47 @@ void SDLMusicInterface::UnloadMusic(int theSongId)
 		ModPlug_Unload(aFile);
 }
 
-void SDLMusicInterface::UnloadAllMusic()
+void CtrMusicInterface::UnloadAllMusic()
 {
 	while (!mMusicMap.empty())
 		UnloadMusic(mMusicMap.begin()->first);
 }
 
-void SDLMusicInterface::PauseMusic(int theSongId)
+void CtrMusicInterface::PauseMusic(int theSongId)
 {
 	MusicMap::iterator anItr = mMusicMap.find(theSongId);
 	if (anItr != mMusicMap.end())
 		anItr->second.mPaused = true;
 }
 
-void SDLMusicInterface::ResumeMusic(int theSongId)
+void CtrMusicInterface::ResumeMusic(int theSongId)
 {
 	MusicMap::iterator anItr = mMusicMap.find(theSongId);
 	if (anItr != mMusicMap.end())
 		anItr->second.mPaused = false;
 }
 
-void SDLMusicInterface::PauseAllMusic()
+void CtrMusicInterface::PauseAllMusic()
 {
 	for (MusicMap::iterator anItr = mMusicMap.begin(); anItr != mMusicMap.end(); ++anItr)
 		if (anItr->second.mPlaying)
 			anItr->second.mPaused = true;
 }
 
-void SDLMusicInterface::ResumeAllMusic()
+void CtrMusicInterface::ResumeAllMusic()
 {
 	for (MusicMap::iterator anItr = mMusicMap.begin(); anItr != mMusicMap.end(); ++anItr)
 		anItr->second.mPaused = false;
 }
 
-void SDLMusicInterface::FadeIn(int theSongId, int theOffset, double theSpeed, bool noLoop)
+void CtrMusicInterface::FadeIn(int theSongId, int theOffset, double theSpeed, bool noLoop)
 {
 	MusicMap::iterator anItr = mMusicMap.find(theSongId);
 	if (anItr == mMusicMap.end())
 		return;
 
 	// From the song's current volume (0 after a fade out or a stop), as BassMusicInterface did.
-	SDLMusicInfo* anInfo = &anItr->second;
+	CtrMusicInfo* anInfo = &anItr->second;
 	mSoundManager->Lock();
 	anInfo->mVolumeAdd = theSpeed;
 	anInfo->mStopOnFade = noLoop;
@@ -247,19 +247,19 @@ void SDLMusicInterface::FadeIn(int theSongId, int theOffset, double theSpeed, bo
 	mSoundManager->Unlock();
 }
 
-void SDLMusicInterface::FadeOut(int theSongId, bool stopSong, double theSpeed)
+void CtrMusicInterface::FadeOut(int theSongId, bool stopSong, double theSpeed)
 {
 	MusicMap::iterator anItr = mMusicMap.find(theSongId);
 	if (anItr == mMusicMap.end())
 		return;
 
-	SDLMusicInfo* anInfo = &anItr->second;
+	CtrMusicInfo* anInfo = &anItr->second;
 	if (anInfo->mVolume != 0.0)
 		anInfo->mVolumeAdd = -theSpeed;
 	anInfo->mStopOnFade = stopSong;
 }
 
-void SDLMusicInterface::FadeOutAll(bool stopSong, double theSpeed)
+void CtrMusicInterface::FadeOutAll(bool stopSong, double theSpeed)
 {
 	for (MusicMap::iterator anItr = mMusicMap.begin(); anItr != mMusicMap.end(); ++anItr)
 	{
@@ -268,14 +268,14 @@ void SDLMusicInterface::FadeOutAll(bool stopSong, double theSpeed)
 	}
 }
 
-void SDLMusicInterface::SetSongVolume(int theSongId, double theVolume)
+void CtrMusicInterface::SetSongVolume(int theSongId, double theVolume)
 {
 	MusicMap::iterator anItr = mMusicMap.find(theSongId);
 	if (anItr != mMusicMap.end())
 		anItr->second.mVolume = theVolume;
 }
 
-void SDLMusicInterface::SetSongMaxVolume(int theSongId, double theMaxVolume)
+void CtrMusicInterface::SetSongMaxVolume(int theSongId, double theMaxVolume)
 {
 	MusicMap::iterator anItr = mMusicMap.find(theSongId);
 	if (anItr != mMusicMap.end())
@@ -286,27 +286,27 @@ void SDLMusicInterface::SetSongMaxVolume(int theSongId, double theMaxVolume)
 	}
 }
 
-bool SDLMusicInterface::IsPlaying(int theSongId)
+bool CtrMusicInterface::IsPlaying(int theSongId)
 {
 	MusicMap::iterator anItr = mMusicMap.find(theSongId);
 	return (anItr != mMusicMap.end()) && anItr->second.mPlaying && !anItr->second.mPaused;
 }
 
-void SDLMusicInterface::SetVolume(double theVolume)
+void CtrMusicInterface::SetVolume(double theVolume)
 {
 	mGlobalVolume = theVolume;
 }
 
-void SDLMusicInterface::SetMusicAmplify(int theSongId, double theAmp)
+void CtrMusicInterface::SetMusicAmplify(int theSongId, double theAmp)
 {
 	// BASS_MusicSetAmplify; the game never calls it, and modplug's levels are its own anyway.
 }
 
-void SDLMusicInterface::Update()
+void CtrMusicInterface::Update()
 {
 	for (MusicMap::iterator anItr = mMusicMap.begin(); anItr != mMusicMap.end(); ++anItr)
 	{
-		SDLMusicInfo* anInfo = &anItr->second;
+		CtrMusicInfo* anInfo = &anItr->second;
 		if (anInfo->mVolumeAdd == 0.0)
 			continue;
 

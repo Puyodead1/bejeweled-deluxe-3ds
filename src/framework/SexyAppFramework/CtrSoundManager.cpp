@@ -1,19 +1,18 @@
-#include <SDL.h>
 #include <tremor/ivorbisfile.h>
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
 
-#include "SDLSoundManager.h"
-#include "SwitchAudio.h"
+#include "CtrSoundManager.h"
+#include "CtrAudio.h"
 #include "../PakLib/PakInterface.h"
 
 using namespace Sexy;
 
 // ---------------------------------------------------------------------------------------------------------------
-// SDLSoundInstance
+// CtrSoundInstance
 
-SDLSoundInstance::SDLSoundInstance(SDLSoundManager* theManager, SDLSoundSample* theSample)
+CtrSoundInstance::CtrSoundInstance(CtrSoundManager* theManager, CtrSoundSample* theSample)
 {
 	mManager = theManager;
 	mSample = theSample;
@@ -33,22 +32,22 @@ SDLSoundInstance::SDLSoundInstance(SDLSoundManager* theManager, SDLSoundSample* 
 	RehupGains();
 }
 
-SDLSoundInstance::~SDLSoundInstance()
+CtrSoundInstance::~CtrSoundInstance()
 {
 }
 
-void SDLSoundInstance::RehupGains()
+void CtrSoundInstance::RehupGains()
 {
 	// As DSoundInstance::RehupVolume/RehupPan: one volume in hundredths of a dB, and the pan attenuating the other
 	// side by up to 100 dB.
-	double aGain = SDLSoundManager::DBToGain(SDLSoundManager::VolumeToDB(mBaseVolume * mVolume * mManager->mMasterVolume));
+	double aGain = CtrSoundManager::DBToGain(CtrSoundManager::VolumeToDB(mBaseVolume * mVolume * mManager->mMasterVolume));
 	int aPan = mBasePan + mPan;
 	if (aPan < -10000)
 		aPan = -10000;
 	if (aPan > 10000)
 		aPan = 10000;
-	double aLeft = aGain * ((aPan > 0) ? SDLSoundManager::DBToGain(-aPan) : 1.0);
-	double aRight = aGain * ((aPan < 0) ? SDLSoundManager::DBToGain(aPan) : 1.0);
+	double aLeft = aGain * ((aPan > 0) ? CtrSoundManager::DBToGain(-aPan) : 1.0);
+	double aRight = aGain * ((aPan < 0) ? CtrSoundManager::DBToGain(aPan) : 1.0);
 
 	mManager->Lock();
 	mGainL = (int)(aLeft * 16384.0 + 0.5);
@@ -56,25 +55,25 @@ void SDLSoundInstance::RehupGains()
 	mManager->Unlock();
 }
 
-void SDLSoundInstance::Release()
+void CtrSoundInstance::Release()
 {
 	Stop();
 	mReleased = true;
 }
 
-void SDLSoundInstance::SetBaseVolume(double theBaseVolume)
+void CtrSoundInstance::SetBaseVolume(double theBaseVolume)
 {
 	mBaseVolume = theBaseVolume;
 	RehupGains();
 }
 
-void SDLSoundInstance::SetBasePan(int theBasePan)
+void CtrSoundInstance::SetBasePan(int theBasePan)
 {
 	mBasePan = theBasePan;
 	RehupGains();
 }
 
-void SDLSoundInstance::AdjustPitch(double theNumSteps)
+void CtrSoundInstance::AdjustPitch(double theNumSteps)
 {
 	double aMult = pow(1.0594630943592952645618252949463, theNumSteps);
 	// DirectSound's frequency range was 100 Hz..200 kHz around a 44.1 kHz original.
@@ -88,19 +87,19 @@ void SDLSoundInstance::AdjustPitch(double theNumSteps)
 	mManager->Unlock();
 }
 
-void SDLSoundInstance::SetVolume(double theVolume)
+void CtrSoundInstance::SetVolume(double theVolume)
 {
 	mVolume = theVolume;
 	RehupGains();
 }
 
-void SDLSoundInstance::SetPan(int thePosition)
+void CtrSoundInstance::SetPan(int thePosition)
 {
 	mPan = thePosition;
 	RehupGains();
 }
 
-bool SDLSoundInstance::Play(bool looping, bool autoRelease)
+bool CtrSoundInstance::Play(bool looping, bool autoRelease)
 {
 	Stop();
 
@@ -118,7 +117,7 @@ bool SDLSoundInstance::Play(bool looping, bool autoRelease)
 	return true;
 }
 
-void SDLSoundInstance::Stop()
+void CtrSoundInstance::Stop()
 {
 	mManager->Lock();
 	mPlaying = false;
@@ -127,12 +126,12 @@ void SDLSoundInstance::Stop()
 	mAutoRelease = false;
 }
 
-bool SDLSoundInstance::IsPlaying()
+bool CtrSoundInstance::IsPlaying()
 {
 	return mHasPlayed && mPlaying;
 }
 
-bool SDLSoundInstance::IsReleased()
+bool CtrSoundInstance::IsReleased()
 {
 	if ((!mReleased) && (mAutoRelease) && (mHasPlayed) && (!IsPlaying()))
 		Release();
@@ -140,15 +139,15 @@ bool SDLSoundInstance::IsReleased()
 	return mReleased;
 }
 
-double SDLSoundInstance::GetVolume()
+double CtrSoundInstance::GetVolume()
 {
 	return mVolume;
 }
 
 // ---------------------------------------------------------------------------------------------------------------
-// SDLSoundManager
+// CtrSoundManager
 
-SDLSoundManager::SDLSoundManager()
+CtrSoundManager::CtrSoundManager()
 {
 	mDevice = 0;
 	mFreq = 48000;
@@ -167,16 +166,16 @@ SDLSoundManager::SDLSoundManager()
 	for (int i = 0; i < MAX_CHANNELS; i++)
 		mChannels[i] = NULL;
 
-	// 48 kHz is the Switch's own rate, so nothing gets resampled twice.
-	mFreq = SwitchAudio::GetRate();
+	// The DSP's own rate, so nothing gets resampled twice.
+	mFreq = CtrAudio::GetRate();
 	mMixBuffer.resize(1024 * 2);
-	mDevice = SwitchAudio::Open(AudioCallback, this);
+	mDevice = CtrAudio::Open(AudioCallback, this);
 }
 
-SDLSoundManager::~SDLSoundManager()
+CtrSoundManager::~CtrSoundManager()
 {
 	if (mDevice)
-		SwitchAudio::Close();
+		CtrAudio::Close();
 	mDevice = false;
 	if (mCaptureFile != NULL)
 		fclose(mCaptureFile);
@@ -186,19 +185,19 @@ SDLSoundManager::~SDLSoundManager()
 	ReleaseSounds();
 }
 
-void SDLSoundManager::Lock()
+void CtrSoundManager::Lock()
 {
 	if (mDevice)
-		SwitchAudio::Lock();
+		CtrAudio::Lock();
 }
 
-void SDLSoundManager::Unlock()
+void CtrSoundManager::Unlock()
 {
 	if (mDevice)
-		SwitchAudio::Unlock();
+		CtrAudio::Unlock();
 }
 
-void SDLSoundManager::SetMusicMixer(MusicMixFunc theFunc, void* theUserData)
+void CtrSoundManager::SetMusicMixer(MusicMixFunc theFunc, void* theUserData)
 {
 	Lock();
 	mMusicMix = theFunc;
@@ -206,7 +205,7 @@ void SDLSoundManager::SetMusicMixer(MusicMixFunc theFunc, void* theUserData)
 	Unlock();
 }
 
-void SDLSoundManager::StartCapture(const std::string& theFileName, int theMilliseconds)
+void CtrSoundManager::StartCapture(const std::string& theFileName, int theMilliseconds)
 {
 	FILE* aFile = fopen(theFileName.c_str(), "wb");
 	if (aFile == NULL)
@@ -220,7 +219,7 @@ void SDLSoundManager::StartCapture(const std::string& theFileName, int theMillis
 	Unlock();
 }
 
-int SDLSoundManager::VolumeToDB(double theVolume)
+int CtrSoundManager::VolumeToDB(double theVolume)
 {
 	int aVol = (int)((log10(1 + theVolume * 9) - 1.0) * 2333);
 	if (aVol < -2000)
@@ -229,19 +228,19 @@ int SDLSoundManager::VolumeToDB(double theVolume)
 	return aVol;
 }
 
-double SDLSoundManager::DBToGain(int theDB)
+double CtrSoundManager::DBToGain(int theDB)
 {
 	if (theDB <= -10000)
 		return 0.0;
 	return pow(10.0, theDB / 2000.0);
 }
 
-void SDLSoundManager::AudioCallback(void* theUserData, int16_t* theOut, int theFrames)
+void CtrSoundManager::AudioCallback(void* theUserData, int16_t* theOut, int theFrames)
 {
-	((SDLSoundManager*)theUserData)->Mix(theOut, theFrames);
+	((CtrSoundManager*)theUserData)->Mix(theOut, theFrames);
 }
 
-void SDLSoundManager::Mix(int16_t* theOut, int theFrames)
+void CtrSoundManager::Mix(int16_t* theOut, int theFrames)
 {
 	if ((int)mMixBuffer.size() < theFrames * 2)
 		mMixBuffer.resize(theFrames * 2);
@@ -253,7 +252,7 @@ void SDLSoundManager::Mix(int16_t* theOut, int theFrames)
 
 	for (int aChannel = 0; aChannel < MAX_CHANNELS; aChannel++)
 	{
-		SDLSoundInstance* anInst = mChannels[aChannel];
+		CtrSoundInstance* anInst = mChannels[aChannel];
 		if (anInst == NULL || !anInst->mPlaying || anInst->mSample == NULL)
 			continue;
 
@@ -313,27 +312,107 @@ void SDLSoundManager::Mix(int16_t* theOut, int theFrames)
 	}
 }
 
-static bool ConvertToDevice(const uint8_t* theData, int theLen, SDL_AudioFormat theFormat, int theChannels, int theFreq,
-	int theDeviceFreq, SDLSoundSample* theSample)
+// 16-bit PCM (mono or stereo, any rate) to 16-bit stereo at the device rate, resampled linearly. Done once per sound
+// at load time; the sounds are short.
+static bool ConvertToDevice(const int16_t* theData, int theFrames, int theChannels, int theFreq, int theDeviceFreq,
+	CtrSoundSample* theSample)
 {
-	SDL_AudioCVT aCVT;
-	if (SDL_BuildAudioCVT(&aCVT, theFormat, (Uint8)theChannels, theFreq, AUDIO_S16SYS, 2, theDeviceFreq) < 0)
+	if (theFrames <= 0 || theChannels < 1 || theChannels > 2 || theFreq <= 0)
 		return false;
 
-	std::vector<uint8_t> aBuf((size_t)theLen * aCVT.len_mult + 16);
-	memcpy(&aBuf[0], theData, theLen);
-	aCVT.buf = &aBuf[0];
-	aCVT.len = theLen;
-	if (aCVT.needed && SDL_ConvertAudio(&aCVT) != 0)
-		return false;
+	int64_t aOutFrames = (int64_t)theFrames * theDeviceFreq / theFreq;
+	if (aOutFrames < 1)
+		aOutFrames = 1;
+	theSample->mFrames = (int)aOutFrames;
+	theSample->mData.resize((size_t)aOutFrames * 2);
+	int16_t* anOut = &theSample->mData[0];
 
-	int aBytes = aCVT.needed ? aCVT.len_cvt : theLen;
-	theSample->mFrames = aBytes / 4;
-	theSample->mData.assign((int16_t*)&aBuf[0], (int16_t*)&aBuf[0] + theSample->mFrames * 2);
+	// Source position in 32.32 fixed point.
+	uint64_t aStep = ((uint64_t)theFreq << 32) / theDeviceFreq;
+	uint64_t aPos = 0;
+	for (int64_t i = 0; i < aOutFrames; i++, aPos += aStep)
+	{
+		int anIdx = (int)(aPos >> 32);
+		int aNext = (anIdx + 1 < theFrames) ? anIdx + 1 : anIdx;
+		int aFrac = (int)((aPos >> 16) & 0xFFFF);
+		for (int c = 0; c < 2; c++)
+		{
+			int aChan = (theChannels == 2) ? c : 0;
+			int a = theData[anIdx * theChannels + aChan];
+			int b = theData[aNext * theChannels + aChan];
+			anOut[i * 2 + c] = (int16_t)(a + (((b - a) * aFrac) >> 16));
+		}
+	}
 	return true;
 }
 
-bool SDLSoundManager::DecodeFile(const std::string& theFilename, SDLSoundSample* theSample)
+static uint32_t ReadLE32(const uint8_t* p) { return p[0] | (p[1] << 8) | (p[2] << 16) | ((uint32_t)p[3] << 24); }
+static uint16_t ReadLE16(const uint8_t* p) { return (uint16_t)(p[0] | (p[1] << 8)); }
+
+// A RIFF WAVE file with 8- or 16-bit PCM, to 16-bit samples.
+static bool LoadWav(const std::string& thePath, std::vector<int16_t>& theSamples, int& theChannels, int& theFreq)
+{
+	FILE* aFP = fopen(thePath.c_str(), "rb");
+	if (aFP == NULL)
+		return false;
+	std::vector<uint8_t> aFile;
+	fseek(aFP, 0, SEEK_END);
+	long aSize = ftell(aFP);
+	fseek(aFP, 0, SEEK_SET);
+	if (aSize > 12)
+	{
+		aFile.resize(aSize);
+		if (fread(&aFile[0], 1, aSize, aFP) != (size_t)aSize)
+			aFile.clear();
+	}
+	fclose(aFP);
+	if (aFile.size() < 12 || memcmp(&aFile[0], "RIFF", 4) != 0 || memcmp(&aFile[8], "WAVE", 4) != 0)
+		return false;
+
+	int aBits = 0;
+	theChannels = 0;
+	theFreq = 0;
+	size_t aPos = 12;
+	while (aPos + 8 <= aFile.size())
+	{
+		uint32_t aChunkSize = ReadLE32(&aFile[aPos + 4]);
+		const uint8_t* aChunk = &aFile[aPos + 8];
+		size_t anAvail = aFile.size() - (aPos + 8);
+		if (aChunkSize > anAvail)
+			aChunkSize = (uint32_t)anAvail;
+
+		if (memcmp(&aFile[aPos], "fmt ", 4) == 0 && aChunkSize >= 16)
+		{
+			if (ReadLE16(aChunk) != 1)		// PCM only
+				return false;
+			theChannels = ReadLE16(aChunk + 2);
+			theFreq = (int)ReadLE32(aChunk + 4);
+			aBits = ReadLE16(aChunk + 14);
+		}
+		else if (memcmp(&aFile[aPos], "data", 4) == 0 && theChannels > 0)
+		{
+			if (aBits == 16)
+			{
+				theSamples.resize(aChunkSize / 2);
+				for (size_t i = 0; i < theSamples.size(); i++)
+					theSamples[i] = (int16_t)ReadLE16(aChunk + i * 2);
+			}
+			else if (aBits == 8)
+			{
+				theSamples.resize(aChunkSize);
+				for (size_t i = 0; i < theSamples.size(); i++)
+					theSamples[i] = (int16_t)((aChunk[i] - 128) << 8);
+			}
+			else
+				return false;
+			return true;
+		}
+		aPos += 8 + aChunkSize + (aChunkSize & 1);
+	}
+	return false;
+}
+
+bool CtrSoundManager::DecodeFile(const std::string& theFilename, CtrSoundSample* theSample)
 {
 	std::string aPath = ResolveDataPath(theFilename);
 	std::string anExt;
@@ -373,30 +452,27 @@ bool SDLSoundManager::DecodeFile(const std::string& theFilename, SDLSoundSample*
 
 		if (aPCM.empty() || aChannels < 1 || aChannels > 2)
 			return false;
-		return ConvertToDevice(&aPCM[0], (int)aPCM.size(), AUDIO_S16SYS, aChannels, aFreq, mFreq, theSample);
+		return ConvertToDevice((const int16_t*)&aPCM[0], (int)(aPCM.size() / (2 * aChannels)), aChannels, aFreq, mFreq, theSample);
 	}
 
 	if (anExt == "wav")
 	{
-		SDL_AudioSpec aSpec;
-		Uint8* aBuf = NULL;
-		Uint32 aLen = 0;
-		if (SDL_LoadWAV(aPath.c_str(), &aSpec, &aBuf, &aLen) == NULL)
+		std::vector<int16_t> aSamples;
+		int aChannels = 0, aFreq = 0;
+		if (!LoadWav(aPath, aSamples, aChannels, aFreq) || aSamples.empty() || aChannels < 1 || aChannels > 2)
 			return false;
-		bool aResult = ConvertToDevice(aBuf, (int)aLen, aSpec.format, aSpec.channels, aSpec.freq, mFreq, theSample);
-		SDL_FreeWAV(aBuf);
-		return aResult;
+		return ConvertToDevice(&aSamples[0], (int)(aSamples.size() / aChannels), aChannels, aFreq, mFreq, theSample);
 	}
 
 	return false;
 }
 
-bool SDLSoundManager::Initialized()
+bool CtrSoundManager::Initialized()
 {
 	return mDevice != 0;
 }
 
-bool SDLSoundManager::LoadSound(unsigned int theSfxID, const std::string& theFilename)
+bool CtrSoundManager::LoadSound(unsigned int theSfxID, const std::string& theFilename)
 {
 	if (theSfxID >= MAX_SOURCE_SOUNDS)
 		return false;
@@ -404,7 +480,7 @@ bool SDLSoundManager::LoadSound(unsigned int theSfxID, const std::string& theFil
 	ReleaseSound(theSfxID);
 
 	// Like DSoundManager: the game names sounds without an extension, so try the formats in turn.
-	SDLSoundSample* aSample = new SDLSoundSample();
+	CtrSoundSample* aSample = new CtrSoundSample();
 	aSample->mFrames = 0;
 	bool aLoaded = DecodeFile(theFilename, aSample) || DecodeFile(theFilename + ".ogg", aSample) ||
 		DecodeFile(theFilename + ".wav", aSample);
@@ -420,7 +496,7 @@ bool SDLSoundManager::LoadSound(unsigned int theSfxID, const std::string& theFil
 	return true;
 }
 
-int SDLSoundManager::LoadSound(const std::string& theFilename)
+int CtrSoundManager::LoadSound(const std::string& theFilename)
 {
 	int anId = GetFreeSoundId();
 	if (anId == -1)
@@ -430,14 +506,14 @@ int SDLSoundManager::LoadSound(const std::string& theFilename)
 	return anId;
 }
 
-void SDLSoundManager::ReleaseSound(unsigned int theSfxID)
+void CtrSoundManager::ReleaseSound(unsigned int theSfxID)
 {
 	if (theSfxID >= MAX_SOURCE_SOUNDS || mSamples[theSfxID] == NULL)
 		return;
 
 	// DirectSound kept duplicated buffers alive; here the channels share the data, so they stop with it.
 	Lock();
-	SDLSoundSample* aSample = mSamples[theSfxID];
+	CtrSoundSample* aSample = mSamples[theSfxID];
 	mSamples[theSfxID] = NULL;
 	for (int i = 0; i < MAX_CHANNELS; i++)
 	{
@@ -451,7 +527,7 @@ void SDLSoundManager::ReleaseSound(unsigned int theSfxID)
 	delete aSample;
 }
 
-void SDLSoundManager::SetVolume(double theVolume)
+void CtrSoundManager::SetVolume(double theVolume)
 {
 	mMasterVolume = theVolume;
 
@@ -460,7 +536,7 @@ void SDLSoundManager::SetVolume(double theVolume)
 			mChannels[i]->RehupGains();
 }
 
-bool SDLSoundManager::SetBaseVolume(unsigned int theSfxID, double theBaseVolume)
+bool CtrSoundManager::SetBaseVolume(unsigned int theSfxID, double theBaseVolume)
 {
 	if (theSfxID >= MAX_SOURCE_SOUNDS)
 		return false;
@@ -468,7 +544,7 @@ bool SDLSoundManager::SetBaseVolume(unsigned int theSfxID, double theBaseVolume)
 	return true;
 }
 
-bool SDLSoundManager::SetBasePan(unsigned int theSfxID, int theBasePan)
+bool CtrSoundManager::SetBasePan(unsigned int theSfxID, int theBasePan)
 {
 	if (theSfxID >= MAX_SOURCE_SOUNDS)
 		return false;
@@ -476,14 +552,14 @@ bool SDLSoundManager::SetBasePan(unsigned int theSfxID, int theBasePan)
 	return true;
 }
 
-void SDLSoundManager::ReleaseFreeChannels()
+void CtrSoundManager::ReleaseFreeChannels()
 {
 	for (int i = 0; i < MAX_CHANNELS; i++)
 	{
 		if (mChannels[i] != NULL && mChannels[i]->IsReleased())
 		{
 			Lock();
-			SDLSoundInstance* anInst = mChannels[i];
+			CtrSoundInstance* anInst = mChannels[i];
 			mChannels[i] = NULL;
 			Unlock();
 			delete anInst;
@@ -491,7 +567,7 @@ void SDLSoundManager::ReleaseFreeChannels()
 	}
 }
 
-SoundInstance* SDLSoundManager::GetSoundInstance(unsigned int theSfxID)
+SoundInstance* CtrSoundManager::GetSoundInstance(unsigned int theSfxID)
 {
 	if (theSfxID >= MAX_SOURCE_SOUNDS || mDevice == 0)
 		return NULL;
@@ -513,7 +589,7 @@ SoundInstance* SDLSoundManager::GetSoundInstance(unsigned int theSfxID)
 	if (aFreeChannel == -1)
 		return NULL;
 
-	SDLSoundInstance* anInst = new SDLSoundInstance(this, mSamples[theSfxID]);
+	CtrSoundInstance* anInst = new CtrSoundInstance(this, mSamples[theSfxID]);
 	anInst->SetBasePan(mBasePans[theSfxID]);
 	anInst->SetBaseVolume(mBaseVolumes[theSfxID]);
 
@@ -523,20 +599,20 @@ SoundInstance* SDLSoundManager::GetSoundInstance(unsigned int theSfxID)
 	return anInst;
 }
 
-void SDLSoundManager::ReleaseSounds()
+void CtrSoundManager::ReleaseSounds()
 {
 	for (int i = 0; i < MAX_SOURCE_SOUNDS; i++)
 		ReleaseSound(i);
 }
 
-void SDLSoundManager::ReleaseChannels()
+void CtrSoundManager::ReleaseChannels()
 {
 	for (int i = 0; i < MAX_CHANNELS; i++)
 	{
 		if (mChannels[i] != NULL)
 		{
 			Lock();
-			SDLSoundInstance* anInst = mChannels[i];
+			CtrSoundInstance* anInst = mChannels[i];
 			mChannels[i] = NULL;
 			Unlock();
 			delete anInst;
@@ -544,26 +620,26 @@ void SDLSoundManager::ReleaseChannels()
 	}
 }
 
-double SDLSoundManager::GetMasterVolume()
+double CtrSoundManager::GetMasterVolume()
 {
 	return mMasterVolume;
 }
 
-void SDLSoundManager::SetMasterVolume(double theVolume)
+void CtrSoundManager::SetMasterVolume(double theVolume)
 {
 	// On Windows this was the system mixer's wave volume; the console has its own, so it's the same as SetVolume.
 	SetVolume(theVolume);
 }
 
-void SDLSoundManager::Flush()
+void CtrSoundManager::Flush()
 {
 }
 
-void SDLSoundManager::SetCooperativeWindow(HWND theHWnd, bool isWindowed)
+void CtrSoundManager::SetCooperativeWindow(HWND theHWnd, bool isWindowed)
 {
 }
 
-void SDLSoundManager::StopAllSounds()
+void CtrSoundManager::StopAllSounds()
 {
 	for (int i = 0; i < MAX_CHANNELS; i++)
 		if (mChannels[i] != NULL)
@@ -574,7 +650,7 @@ void SDLSoundManager::StopAllSounds()
 		}
 }
 
-int SDLSoundManager::GetFreeSoundId()
+int CtrSoundManager::GetFreeSoundId()
 {
 	for (int i = 0; i < MAX_SOURCE_SOUNDS; i++)
 		if (mSamples[i] == NULL)
@@ -582,7 +658,7 @@ int SDLSoundManager::GetFreeSoundId()
 	return -1;
 }
 
-int SDLSoundManager::GetNumSounds()
+int CtrSoundManager::GetNumSounds()
 {
 	int aCount = 0;
 	for (int i = 0; i < MAX_SOURCE_SOUNDS; i++)

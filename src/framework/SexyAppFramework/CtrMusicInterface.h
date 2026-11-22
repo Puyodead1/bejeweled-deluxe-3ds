@@ -1,8 +1,8 @@
-#ifndef __SDLMUSICINTERFACE_H__
-#define __SDLMUSICINTERFACE_H__
+#ifndef __CTRMUSICINTERFACE_H__
+#define __CTRMUSICINTERFACE_H__
 
-// Switch port: the MusicInterface on libmodplug, standing in for BassMusicInterface. Songs (the game's S3Ms) are
-// rendered on the audio thread and mixed into SDLSoundManager's device. Volumes, fades and the offset (an order
+// Console port: the MusicInterface on libmodplug, standing in for BassMusicInterface. Songs (the game's S3Ms) are
+// rendered on the audio thread and mixed into CtrSoundManager's device. Volumes, fades and the offset (an order
 // number) behave as in BassMusicInterface: fades step once per Update(), i.e. per game update.
 
 #include "MusicInterface.h"
@@ -16,9 +16,9 @@ struct _ModPlugFile;
 namespace Sexy
 {
 
-class SDLSoundManager;
+class CtrSoundManager;
 
-struct SDLMusicInfo
+struct CtrMusicInfo
 {
 	_ModPlugFile*			mFile;
 	std::vector<char>		mData;
@@ -30,26 +30,26 @@ struct SDLMusicInfo
 	bool					mPaused;
 	bool					mLoop;
 
-	SDLMusicInfo();
+	CtrMusicInfo();
 };
 
-class SDLMusicInterface : public MusicInterface
+class CtrMusicInterface : public MusicInterface
 {
 protected:
-	typedef std::map<int, SDLMusicInfo> MusicMap;
+	typedef std::map<int, CtrMusicInfo> MusicMap;
 
-	SDLSoundManager*		mSoundManager;
+	CtrSoundManager*		mSoundManager;
 	MusicMap				mMusicMap;
 	double					mGlobalVolume;
 	std::vector<int16_t>	mRenderBuffer;
 
 	static void				MixCallback(void* theUserData, int32_t* theBuffer, int theFrames);
 	void					Mix(int32_t* theBuffer, int theFrames);
-	void					StartSong(SDLMusicInfo* theInfo, int theOffset, bool noLoop);
+	void					StartSong(CtrMusicInfo* theInfo, int theOffset, bool noLoop);
 
 public:
-	SDLMusicInterface(SDLSoundManager* theSoundManager);
-	virtual ~SDLMusicInterface();
+	CtrMusicInterface(CtrSoundManager* theSoundManager);
+	virtual ~CtrMusicInterface();
 
 	virtual bool			LoadMusic(int theSongId, const std::string& theFileName);
 	virtual void			PlayMusic(int theSongId, int theOffset = 0, bool noLoop = false);

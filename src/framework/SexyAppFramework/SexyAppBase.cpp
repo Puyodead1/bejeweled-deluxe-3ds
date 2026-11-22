@@ -2,7 +2,6 @@
 //#define SEXY_PERF_ENABLED
 
 #include <fstream>
-#include <SDL.h>
 #include <dirent.h>
 #include <errno.h>
 #include <pthread.h>
@@ -35,10 +34,10 @@
 #include "MusicInterface.h"
 #include "SoundManager.h"
 #include "SoundInstance.h"
-#include "SDLSoundManager.h"
-#include "SDLMusicInterface.h"
-#include "SwitchRegistry.h"
-#include "SwitchPlatform.h"
+#include "CtrSoundManager.h"
+#include "CtrMusicInterface.h"
+#include "CtrRegistry.h"
+#include "CtrPlatform.h"
 #include <string>
 
 
@@ -169,26 +168,10 @@ SexyAppBase::SexyAppBase()
 	mPointerX = -1;
 	mPointerY = -1;
 	mPointerIn = false;
-	mPointerVisible = false;
-	mPadPointerX = 0;
-	mPadPointerY = 0;
-	mPadButtonDown = false;
-	mPadLastTick = 0;
 	mPadConsumed = 0;
-	mTouchFinger = 0;
 	mTouchDown = false;
-	mDPadX = 0;
-	mDPadY = 0;
-	mDPadNextStep = 0;
-	mAutoDPad = 0;
-	mPointerToDialog = NULL;
 	mAutoInputIndex = 0;
 	mAutoInputNext = 0;
-	mAutoStickX = 0;
-	mAutoStickY = 0;
-	mAutoStickUntil = 0;
-	for (int aPad = 0; aPad < (int)(sizeof(mGameControllers) / sizeof(mGameControllers[0])); aPad++)
-		mGameControllers[aPad] = NULL;
 	mRunning = false;
 	mActive = true;
 	mProcessInTimer = false;
@@ -376,11 +359,7 @@ SexyAppBase::~SexyAppBase()
 	delete mMusicInterface;
 	delete mSoundManager;
 
-	if (mHWnd != NULL)
-	{
-		SDL_DestroyWindow((SDL_Window*)mHWnd);
-		mHWnd = NULL;
-	}
+	mHWnd = NULL;
 
 	WaitForLoadingThread();
 
@@ -877,8 +856,6 @@ void SexyAppBase::AddDialog(int theDialogId, Dialog* theDialog)
 
 	mDialogMap.insert(DialogMap::value_type(theDialogId, theDialog));
 	mDialogList.push_back(theDialog);
-	// Switch port: placed once the caller has finished positioning it (see ProcessSDLEvents).
-	mPointerToDialog = theDialog;
 
 	mWidgetManager->AddWidget(theDialog);
 	if (theDialog->IsModal())
@@ -1285,7 +1262,7 @@ bool SexyAppBase::RegistryWrite(const std::string& theValueName, uint32_t theTyp
 		aValueName = theValueName;
 	}
 
-	if (!SwitchRegistry::Write(aKeyName, aValueName, theType, theValue, theLength))
+	if (!CtrRegistry::Write(aKeyName, aValueName, theType, theValue, theLength))
 	{
 		if (mRecordingDemoBuffer)
 		{
@@ -1369,7 +1346,7 @@ bool SexyAppBase::RegistryEraseKey(const SexyString& _theKeyName)
 
 	std::string aKeyName = RemoveTrailingSlash("SOFTWARE\\" + mRegKey) + "\\" + theKeyName;
 
-	if (!SwitchRegistry::DeleteKey(aKeyName))
+	if (!CtrRegistry::DeleteKey(aKeyName))
 	{
 		if (mRecordingDemoBuffer)
 		{
@@ -1414,7 +1391,7 @@ void SexyAppBase::RegistryEraseValue(const SexyString& _theValueName)
 		aValueName = theValueName;
 	}
 
-	SwitchRegistry::DeleteValue(aKeyName, aValueName);
+	CtrRegistry::DeleteValue(aKeyName, aValueName);
 }
 
 bool SexyAppBase::RegistryGetSubKeys(const std::string& theKeyName, StringVector* theSubKeys)
@@ -1449,7 +1426,7 @@ bool SexyAppBase::RegistryGetSubKeys(const std::string& theKeyName, StringVector
 	else
 	{
 		std::string aKeyName = RemoveTrailingSlash(RemoveTrailingSlash("SOFTWARE\\" + mRegKey) + "\\" + theKeyName);
-		if (SwitchRegistry::GetSubKeys(aKeyName, theSubKeys))
+		if (CtrRegistry::GetSubKeys(aKeyName, theSubKeys))
 		{
 
 			if (mRecordingDemoBuffer)
@@ -1542,7 +1519,7 @@ bool SexyAppBase::RegistryReadKey(const std::string& theValueName, uint32_t* the
 		}
 
 		{
-			if (SwitchRegistry::Read(aKeyName, aValueName, theType, theValue, theLength))
+			if (CtrRegistry::Read(aKeyName, aValueName, theType, theValue, theLength))
 			{
 				if (mRecordingDemoBuffer)
 				{
@@ -1690,7 +1667,7 @@ bool SexyAppBase::WriteBytesToFile(const std::string& theFileName, const void *t
 
 	// Switch port: write a temporary file and move it into place, so an interrupted write can't truncate a save.
 	MkDir(GetFileDir(theFileName));
-	std::string aTempName = SwitchPlatform::TempFileName(theFileName);
+	std::string aTempName = CtrPlatform::TempFileName(theFileName);
 	FILE* aFP = fopen(aTempName.c_str(), "w+b");
 	bool aSuccess = false;
 	if (aFP != NULL)
@@ -1699,7 +1676,7 @@ bool SexyAppBase::WriteBytesToFile(const std::string& theFileName, const void *t
 		if (fclose(aFP) != 0)
 			aSuccess = false;
 		if (aSuccess)
-			aSuccess = SwitchPlatform::CommitFile(theFileName);
+			aSuccess = CtrPlatform::CommitFile(theFileName);
 		else
 			remove(aTempName.c_str());
 	}
@@ -1927,7 +1904,7 @@ void SexyAppBase::Shutdown()
 
 		if (mReadFromRegistry)
 		{
-			SwitchRegistry::Batch aBatch;	// Switch port: one file write for all the values
+			CtrRegistry::Batch aBatch;	// Switch port: one file write for all the values
 			WriteToRegistry();
 		}
 
@@ -2255,13 +2232,13 @@ bool SexyAppBase::DrawDirtyStuff()
 		return false;
 	}
 
-	uint64_t aDrawStartUs = SwitchPlatform::MicroTime();
+	uint64_t aDrawStartUs = CtrPlatform::MicroTime();
 	mIsDrawing = true;
 	bool drewScreen = mWidgetManager->DrawScreen();
 	mIsDrawing = false;
-	uint64_t aDrawEndUs = SwitchPlatform::MicroTime();
+	uint64_t aDrawEndUs = CtrPlatform::MicroTime();
 
-	if ((drewScreen || (aStartTime - mLastDrawTick >= 1000) || (mCustomCursorDirty)) &&
+	if ((drewScreen || (aStartTime - mLastDrawTick >= 1000) || (mCustomCursorDirty) || mDDInterface->mViewDirty) &&
 		((int) (aStartTime - mNextDrawTick) >= 0))
 	{
 		mLastDrawWasEmpty = false;
@@ -2294,9 +2271,9 @@ bool SexyAppBase::DrawDirtyStuff()
 		DWORD aPreScreenBltTime = timeGetTime();
 		mLastDrawTick = aPreScreenBltTime;
 
-		uint64_t aPresentStartUs = SwitchPlatform::MicroTime();
+		uint64_t aPresentStartUs = CtrPlatform::MicroTime();
 		Redraw(NULL);
-		NoteFrameTimes(aDrawEndUs - aDrawStartUs, aPresentStartUs, SwitchPlatform::MicroTime());
+		NoteFrameTimes(aDrawEndUs - aDrawStartUs, aPresentStartUs, CtrPlatform::MicroTime());
 
 		// This is our one UpdateFTimeAcc if we are vsynched
 		UpdateFTimeAcc();
@@ -2407,7 +2384,7 @@ void SexyAppBase::Popup(const std::string& theString)
 {
 	BeginPopup();
 	if (!mShutdown)
-		SwitchPlatform::ShowError(SexyStringToString(GetString("FATAL_ERROR", _S("FATAL ERROR"))), theString);
+		CtrPlatform::ShowError(SexyStringToString(GetString("FATAL_ERROR", _S("FATAL ERROR"))), theString);
 	EndPopup();
 }
 
@@ -2444,59 +2421,6 @@ static DWORD gPowerSaveTick = 0;
 // FUNCTION: GAME187 0x448660
 
 // FUNCTION: GAME187 0x448ac0
-// Win32 virtual key code for an SDL key, or 0 when the game has no use for it.
-static int SDLKeyToKeyCode(SDL_Keycode theKey)
-{
-	if (theKey >= SDLK_a && theKey <= SDLK_z)
-		return 'A' + (theKey - SDLK_a);
-	if (theKey >= SDLK_0 && theKey <= SDLK_9)
-		return '0' + (theKey - SDLK_0);
-	if (theKey >= SDLK_F1 && theKey <= SDLK_F12)
-		return KEYCODE_F1 + (theKey - SDLK_F1);
-
-	switch (theKey)
-	{
-	case SDLK_BACKSPACE:	return KEYCODE_BACK;
-	case SDLK_TAB:			return KEYCODE_TAB;
-	case SDLK_RETURN:
-	case SDLK_KP_ENTER:		return KEYCODE_RETURN;
-	case SDLK_LSHIFT:
-	case SDLK_RSHIFT:		return KEYCODE_SHIFT;
-	case SDLK_LCTRL:
-	case SDLK_RCTRL:		return KEYCODE_CONTROL;
-	case SDLK_LALT:
-	case SDLK_RALT:			return KEYCODE_MENU;
-	case SDLK_PAUSE:		return 0x13;
-	case SDLK_ESCAPE:		return KEYCODE_ESCAPE;
-	case SDLK_SPACE:		return KEYCODE_SPACE;
-	case SDLK_PAGEUP:		return 0x21;
-	case SDLK_PAGEDOWN:		return 0x22;
-	case SDLK_END:			return 0x23;
-	case SDLK_HOME:			return 0x24;
-	case SDLK_LEFT:			return 0x25;
-	case SDLK_UP:			return 0x26;
-	case SDLK_RIGHT:		return 0x27;
-	case SDLK_DOWN:			return 0x28;
-	case SDLK_INSERT:		return 0x2D;
-	case SDLK_DELETE:		return 0x2E;
-	default:				return 0;
-	}
-}
-
-// Decode one UTF-8 sequence; advances theStr.
-static unsigned int DecodeUTF8(const char*& theStr)
-{
-	unsigned char c = (unsigned char)*theStr++;
-	if (c < 0x80)
-		return c;
-
-	int aCount = (c >= 0xF0) ? 3 : (c >= 0xE0) ? 2 : 1;
-	unsigned int aChar = c & (0x3F >> aCount);
-	while (aCount-- > 0 && (*theStr & 0xC0) == 0x80)
-		aChar = (aChar << 6) | (*theStr++ & 0x3F);
-	return aChar;
-}
-
 // Queues a message the way WindowProc did: nothing after WM_CLOSE, at most one pending WM_TIMER.
 void SexyAppBase::PushMessage(UINT theMessage, WPARAM wParam, LPARAM lParam)
 {
@@ -2519,180 +2443,72 @@ void SexyAppBase::PushMessage(UINT theMessage, WPARAM wParam, LPARAM lParam)
 	mDeferredMessages.push_back(aMsg);
 }
 
-void SexyAppBase::ProcessSDLEvents()
+void SexyAppBase::ProcessInput()
 {
 	if (!mAutoInput.empty() && !mShutdown)
 		ProcessAutoInput();
 
-	SDL_Event anEvent;
-	while (SDL_PollEvent(&anEvent))
+	// The system's own events (HOME menu, sleep, the power button) are handled in aptMainLoop, which reports a close
+	// request ("Close" from the HOME menu, power off) once. Shut down normally then, so the game and settings are saved.
+	static bool aCloseRequested = false;
+	if (!CtrPlatform::PumpSystem() && !aCloseRequested)
 	{
-		if (mShutdown)
-			continue;
-
-		switch (anEvent.type)
+		aCloseRequested = true;
+		fprintf(stderr, "system: close requested\n");
+		if (!mShutdown)
 		{
-		case SDL_QUIT:
 			PushMessage(WM_CLOSE, 0, 0);
 			CloseRequestAsync();
-			break;
-
-		case SDL_WINDOWEVENT:
-			if (anEvent.window.event == SDL_WINDOWEVENT_FOCUS_GAINED || anEvent.window.event == SDL_WINDOWEVENT_FOCUS_LOST)
-				SetAppActive(anEvent.window.event == SDL_WINDOWEVENT_FOCUS_GAINED);
-			else if (anEvent.window.event == SDL_WINDOWEVENT_SIZE_CHANGED || anEvent.window.event == SDL_WINDOWEVENT_RESIZED)
-			{
-				// Docking changes the output size: refit the picture and the touch mapping.
-				mDDInterface->UpdatePresentationRect();
-				mWidgetManager->Resize(mScreenBounds, mDDInterface->mPresentationRect);
-				PushMessage(WM_DISPLAYCHANGE, 0, 0);
-			}
-			break;
-
-		// The touch screen: SDL's Switch driver turns off its touch-to-mouse events, so the first finger down is made
-		// the mouse here (HandleTouch), a mouse that only moves while the finger is down.
-		case SDL_FINGERDOWN:
-		case SDL_FINGERMOTION:
-		case SDL_FINGERUP:
-		{
-			int aWidth = 0, aHeight = 0;
-			SDL_GetWindowSize(mDDInterface->mWindow, &aWidth, &aHeight);
-			int aX = (int)(anEvent.tfinger.x * aWidth), aY = (int)(anEvent.tfinger.y * aHeight);
-			if (anEvent.type == SDL_FINGERDOWN)
-			{
-				if (mTouchDown)
-					break;
-				mTouchDown = true;
-				mTouchFinger = anEvent.tfinger.fingerId;
-			}
-			// (The driver's motion events carry the finger's slot rather than its id, so only lifts are matched.)
-			else if (!mTouchDown || (anEvent.type == SDL_FINGERUP && anEvent.tfinger.fingerId != mTouchFinger))
-				break;
-			if (anEvent.type == SDL_FINGERUP)
-				mTouchDown = false;
-			HandleTouch(anEvent.type, aX, aY);
-			break;
-		}
-
-		// A mouse, if there is one (SDL's touch-to-mouse events, which == SDL_TOUCH_MOUSEID, are off on the Switch).
-		case SDL_MOUSEMOTION:
-			// A finger only moves while it's down; a hovering mouse always counts.
-			if (anEvent.motion.which != SDL_TOUCH_MOUSEID || anEvent.motion.state != 0)
-				MovePointer(anEvent.motion.x, anEvent.motion.y, false);
-			break;
-
-		case SDL_MOUSEBUTTONDOWN:
-		case SDL_MOUSEBUTTONUP:
-		{
-			bool isDown = anEvent.type == SDL_MOUSEBUTTONDOWN;
-			bool isTouch = anEvent.button.which == SDL_TOUCH_MOUSEID;
-			LPARAM aPos = MAKELONG(anEvent.button.x, anEvent.button.y);
-			UINT aMessage;
-			if (anEvent.button.button == SDL_BUTTON_RIGHT)
-				aMessage = isDown ? ((anEvent.button.clicks == 2) ? WM_RBUTTONDBLCLK : WM_RBUTTONDOWN) : WM_RBUTTONUP;
-			else if (anEvent.button.button == SDL_BUTTON_MIDDLE)
-				aMessage = isDown ? WM_MBUTTONDOWN : WM_MBUTTONUP;
-			else
-				aMessage = isDown ? ((anEvent.button.clicks == 2) ? WM_LBUTTONDBLCLK : WM_LBUTTONDOWN) : WM_LBUTTONUP;
-
-			// A touch lands without any hover first; move the pointer there so the widget under it is "over".
-			if (isDown)
-				MovePointer(anEvent.button.x, anEvent.button.y, false);
-			PushMessage(aMessage, 0, aPos);
-
-			// A lifted finger isn't over anything any more, so hover highlights go away (the next WM_TIMER sees it).
-			if (!isDown && isTouch)
-				mPointerIn = false;
-			break;
-		}
-
-		case SDL_JOYDEVICEADDED:
-			OpenControllers();
-			break;
-
-		case SDL_JOYBUTTONDOWN:
-		case SDL_JOYBUTTONUP:
-			HandleControllerButton(anEvent.jbutton.button, anEvent.type == SDL_JOYBUTTONDOWN);
-			break;
-
-		case SDL_MOUSEWHEEL:
-			PushMessage(WM_MOUSEWHEEL, MAKELONG(0, anEvent.wheel.y * 120), 0);
-			break;
-
-		case SDL_KEYDOWN:
-		case SDL_KEYUP:
-		{
-			int aKeyCode = SDLKeyToKeyCode(anEvent.key.keysym.sym);
-			if (aKeyCode == 0)
-				break;
-
-			bool keyDown = anEvent.type == SDL_KEYDOWN;
-			if (aKeyCode == VK_CONTROL)
-				mCtrlDown = keyDown;
-			if (aKeyCode == VK_MENU)
-				mAltDown = keyDown;
-
-			if ((keyDown) && (DebugKeyDownAsync(aKeyCode, mCtrlDown, mAltDown)))
-				break;
-
-			if (keyDown)
-			{
-				PushMessage(mAltDown ? WM_SYSKEYDOWN : WM_KEYDOWN, aKeyCode, 0);
-
-				// Windows also sends WM_CHAR for these; text input only reports printable characters.
-				if (aKeyCode == KEYCODE_BACK || aKeyCode == KEYCODE_TAB || aKeyCode == KEYCODE_RETURN || aKeyCode == KEYCODE_ESCAPE)
-					PushMessage(WM_CHAR, aKeyCode, 0);
-			}
-			else
-				PushMessage(mAltDown ? WM_SYSKEYUP : WM_KEYUP, aKeyCode, 0);
-			break;
-		}
-
-		case SDL_TEXTINPUT:
-		{
-			const char* aText = anEvent.text.text;
-			while (*aText != 0)
-			{
-				unsigned int aChar = DecodeUTF8(aText);
-				if (aChar >= 0x20 && (sizeof(SexyChar) > 1 || aChar < 0x100))
-					PushMessage(WM_CHAR, aChar, 0);
-			}
-			break;
-		}
 		}
 	}
 
-	// HOME menu, sleep, overlays: lose focus like a deactivated window did on the PC, which pauses the board and
-	// mutes. After a suspend, don't make up for the time we were stopped.
-	int anAppletEvents = SwitchPlatform::TakeAppletEvents();
+	CtrPlatform::Input anInput;
+	CtrPlatform::ReadInput(anInput);
 	if (!mShutdown)
 	{
-		if (anAppletEvents & SwitchPlatform::APPLET_FOCUS_CHANGED)
-			SetAppActive(SwitchPlatform::IsInFocus());
-		if (anAppletEvents & SwitchPlatform::APPLET_RESUMED)
+		// The touch screen is the mouse: bottom-screen pixel (x, y) shows game pixel (2x, 2y). The stylus only moves
+		// the pointer while it's down, and there is no hover.
+		static bool aStylusDown = false;
+		if (anInput.mTouching)
+		{
+			int aX = std::min(anInput.mTouchX * mWidth / 320, mWidth - 1);
+			int aY = std::min(anInput.mTouchY * mHeight / 240, mHeight - 1);
+			if (!aStylusDown)
+			{
+				aStylusDown = true;
+				HandleTouch(TOUCH_DOWN, aX, aY);
+			}
+			else if (aX != mPointerX || aY != mPointerY)
+				HandleTouch(TOUCH_MOVE, aX, aY);
+		}
+		else if (aStylusDown)
+		{
+			aStylusDown = false;
+			HandleTouch(TOUCH_UP, mPointerX, mPointerY);
+		}
+
+		for (int i = 0; i < NUM_PADS; i++)
+		{
+			if (anInput.mPressed & (1u << i))
+				HandleButton(i, true);
+			if (anInput.mReleased & (1u << i))
+				HandleButton(i, false);
+		}
+	}
+
+	// HOME menu, sleep, library applets: lose focus like a deactivated window did on the PC, which pauses the board and
+	// mutes. After a suspend, don't make up for the time we were stopped.
+	int anAppletEvents = CtrPlatform::TakeAppletEvents();
+	if (!mShutdown)
+	{
+		if (anAppletEvents & CtrPlatform::APPLET_FOCUS_CHANGED)
+			SetAppActive(CtrPlatform::IsInFocus());
+		if (anAppletEvents & CtrPlatform::APPLET_RESUMED)
 			ClearUpdateBacklog();
 	}
 
-	// A dialog with one button (OK, Done) opened while the controller is in use: start the pointer on that button.
-	// Not for two-button dialogs, where either answer may lose something.
-	if (mPointerToDialog != NULL)
-	{
-		Dialog* aDialog = mPointerToDialog;
-		mPointerToDialog = NULL;
-		if (mPointerVisible && std::find(mDialogList.begin(), mDialogList.end(), aDialog) != mDialogList.end() &&
-			aDialog->mYesButton != NULL && aDialog->mNoButton == NULL)
-		{
-			ButtonWidget* aButton = aDialog->mYesButton;
-			MovePointerToGame(aButton->mX + aButton->mWidth / 2, aButton->mY + aButton->mHeight / 2);
-		}
-	}
-
-	DWORD aTimeNow = GetTickCount();
-	if (!mShutdown)
-		UpdateControllerPointer(aTimeNow - mPadLastTick);
-	mPadLastTick = aTimeNow;
-
 	// Stand-in for the 10 ms SetTimer the window used to get.
+	DWORD aTimeNow = GetTickCount();
 	static DWORD aLastTimerPush = 0;
 	if (aTimeNow - aLastTimerPush >= (DWORD)mFrameTime)
 	{
@@ -2710,53 +2526,41 @@ void SexyAppBase::SetAppActive(bool isActive)
 	PushMessage(WM_ACTIVATEAPP, isActive ? 1 : 0, 0);
 }
 
-// Moves the pointer (window pixels) and tells the widgets. fromController shows the game's cursor; touch hides it.
-void SexyAppBase::MovePointer(int theX, int theY, bool fromController)
+// Moves the pointer (game pixels) and tells the widgets. The top screen's magnifier follows it.
+void SexyAppBase::MovePointer(int theX, int theY)
 {
 	mPointerX = theX;
 	mPointerY = theY;
 	mPointerIn = true;
-
-	// The software cursor is drawn in game pixels.
-	int aGameX = theX, aGameY = theY;
-	mDDInterface->RemapMouse(aGameX, aGameY);
-	mDDInterface->SetCursorPos(aGameX, aGameY);
-	if (mPointerVisible != fromController)
-	{
-		mPointerVisible = fromController;
-		EnforceCursor();
-	}
+	mDDInterface->SetFocusPoint(theX, theY);
 	PushMessage(WM_MOUSEMOVE, 0, MAKELONG(theX, theY));
 }
 
-// The touching finger as the mouse, in window pixels: down moves the pointer there first (no hover before a touch),
-// and a lifted finger isn't over anything any more, so hover highlights go away (the next WM_TIMER sees it).
+// The stylus as the mouse: down moves the pointer there first (there's no hover before a touch), and once lifted it
+// isn't over anything any more, so hover highlights go away (the next WM_TIMER sees it).
 void SexyAppBase::HandleTouch(int theType, int theX, int theY)
 {
 	LPARAM aPos = MAKELONG(theX, theY);
 	switch (theType)
 	{
-	case SDL_FINGERDOWN:
-		MovePointer(theX, theY, false);
+	case TOUCH_DOWN:
+		if (mTouchDown)
+			break;
+		mTouchDown = true;
+		MovePointer(theX, theY);
 		PushMessage(WM_LBUTTONDOWN, 0, aPos);
 		break;
-	case SDL_FINGERMOTION:
-		MovePointer(theX, theY, false);
+	case TOUCH_MOVE:
+		if (mTouchDown)
+			MovePointer(theX, theY);
 		break;
-	case SDL_FINGERUP:
+	case TOUCH_UP:
+		if (!mTouchDown)
+			break;
+		mTouchDown = false;
 		PushMessage(WM_LBUTTONUP, 0, aPos);
 		mPointerIn = false;
 		break;
-	}
-}
-
-void SexyAppBase::OpenControllers()
-{
-	int aCount = std::min(SDL_NumJoysticks(), (int)(sizeof(mGameControllers) / sizeof(mGameControllers[0])));
-	for (int i = 0; i < aCount; i++)
-	{
-		if (mGameControllers[i] == NULL)
-			mGameControllers[i] = SDL_JoystickOpen(i);
 	}
 }
 
@@ -2769,207 +2573,64 @@ void SexyAppBase::PushKeyPress(int theKeyCode, int theChar)
 	PushMessage(WM_KEYUP, theKeyCode, 0);
 }
 
-// Moves the controller pointer to a point in game pixels and shows it.
-void SexyAppBase::MovePointerToGame(int theGameX, int theGameY)
+void SexyAppBase::HandleButton(int theButton, bool isDown)
 {
-	Rect& aRect = mDDInterface->mPresentationRect;
-	if (aRect.mWidth <= 0 || aRect.mHeight <= 0)
+	if (theButton < 0 || theButton >= NUM_PADS)
 		return;
-	mPadPointerX = aRect.mX + (theGameX + 0.5) * aRect.mWidth / mWidth;
-	mPadPointerY = aRect.mY + (theGameY + 0.5) * aRect.mHeight / mHeight;
-	MovePointer((int)mPadPointerX, (int)mPadPointerY, true);
-}
 
-void SexyAppBase::HandleControllerButton(int theButton, bool isDown)
-{
 	// The game's shortcuts come first; a press it takes keeps its release away from the default handling too.
-	if (theButton >= 0 && theButton < 32)
+	int aBit = 1 << theButton;
+	if (!isDown && (mPadConsumed & aBit))
 	{
-		int aBit = 1 << theButton;
-		if (!isDown && (mPadConsumed & aBit))
-		{
-			mPadConsumed &= ~aBit;
-			return;
-		}
-		if (isDown && !mShutdown && ControllerButton(theButton))
-		{
-			mPadConsumed |= aBit;
-			return;
-		}
+		mPadConsumed &= ~aBit;
+		return;
 	}
+	if (isDown && !mShutdown && ControllerButton(theButton))
+	{
+		mPadConsumed |= aBit;
+		return;
+	}
+	if (!isDown)
+		return;
 
 	switch (theButton)
 	{
-	case PAD_A:
-	case PAD_ZR:
-	case PAD_R:
-	{
-		// Click where the controller pointer is; bring it out first if touch had hidden it.
-		if (isDown == mPadButtonDown)
-			break;
-		if (!mPointerVisible)
-		{
-			mPadPointerX = mPointerX;
-			mPadPointerY = mPointerY;
-		}
-		int aX = (int)mPadPointerX, aY = (int)mPadPointerY;
-		if (isDown)
-			MovePointer(aX, aY, true);
-		PushMessage(isDown ? WM_LBUTTONDOWN : WM_LBUTTONUP, 0, MAKELONG(aX, aY));
-		mPadButtonDown = isDown;
-		break;
-	}
-
 	case PAD_B:
-		if (isDown)
-			PushKeyPress(KEYCODE_ESCAPE, KEYCODE_ESCAPE);
+		PushKeyPress(KEYCODE_ESCAPE, KEYCODE_ESCAPE);
 		break;
 
 	case PAD_Y:
 		// Any character pauses the board.
-		if (isDown)
-			PushKeyPress(KEYCODE_SPACE, ' ');
+		PushKeyPress(KEYCODE_SPACE, ' ');
 		break;
 
-	case PAD_PLUS:
-		// Back to the Homebrew Menu, the usual + for homebrew: a normal shutdown, as closing from HOME is, so the
-		// game in progress and the settings are saved.
-		if (isDown)
-		{
-			fprintf(stderr, "input: + quits\n");
-			PushMessage(WM_CLOSE, 0, 0);
-			CloseRequestAsync();
-		}
+	case PAD_L:
+	case PAD_R:
+		// The top screen: the whole picture, or full size around the last touch.
+		mDDInterface->SetMagnifier(!mDDInterface->mMagnifier);
+		break;
+
+	case PAD_START:
+		// Back to the Homebrew Launcher, the usual START for homebrew: a normal shutdown, as closing from HOME is, so
+		// the game in progress and the settings are saved.
+		fprintf(stderr, "input: START quits\n");
+		PushMessage(WM_CLOSE, 0, 0);
+		CloseRequestAsync();
 		break;
 	}
-}
-
-// The left stick steers the pointer, faster the further it is pushed. The d-pad steps it where the game has steps
-// (StepPointer: a gem at a time on the board), first on the press and then repeating while held, and glides it
-// elsewhere.
-void SexyAppBase::UpdateControllerPointer(DWORD theElapsed)
-{
-	if (theElapsed > 100)
-		theElapsed = 100;
-
-	const int aDeadZone = 6000;
-	double aDX = 0, aDY = 0;
-	int aPadX = 0, aPadY = 0;
-	for (int i = 0; i < (int)(sizeof(mGameControllers) / sizeof(mGameControllers[0])); i++)
-	{
-		SDL_Joystick* aJoy = (SDL_Joystick*)mGameControllers[i];
-		if (aJoy == NULL)
-			continue;
-
-		for (int anAxis = 0; anAxis < 2; anAxis++)
-		{
-			int aValue = SDL_JoystickGetAxis(aJoy, anAxis);
-			if (abs(aValue) <= aDeadZone)
-				continue;
-			double aNorm = (abs(aValue) - aDeadZone) / (32767.0 - aDeadZone);
-			if (aNorm > 1.0)
-				aNorm = 1.0;
-			double aSpeed = 0.15 + 0.85 * aNorm * aNorm;
-			(anAxis == 0 ? aDX : aDY) += (aValue < 0) ? -aSpeed : aSpeed;
-		}
-
-		if (SDL_JoystickGetButton(aJoy, PAD_LEFT))	aPadX = -1;
-		if (SDL_JoystickGetButton(aJoy, PAD_RIGHT))	aPadX = 1;
-		if (SDL_JoystickGetButton(aJoy, PAD_UP))	aPadY = -1;
-		if (SDL_JoystickGetButton(aJoy, PAD_DOWN))	aPadY = 1;
-	}
-	if (mAutoDPad & (1 << PAD_LEFT))	aPadX = -1;
-	if (mAutoDPad & (1 << PAD_RIGHT))	aPadX = 1;
-	if (mAutoDPad & (1 << PAD_UP))		aPadY = -1;
-	if (mAutoDPad & (1 << PAD_DOWN))	aPadY = 1;
-
-	DWORD aNow = GetTickCount();
-	if ((int)(mAutoStickUntil - aNow) > 0)
-	{
-		aDX += mAutoStickX;
-		aDY += mAutoStickY;
-	}
-
-	if (aDX == 0 && aDY == 0 && aPadX == 0 && aPadY == 0)
-	{
-		mDPadX = mDPadY = 0;
-		return;
-	}
-
-	if (!mPointerVisible)
-	{
-		// Pick up from wherever the pointer was (or the middle of the screen the first time).
-		if (mPointerX < 0)
-		{
-			Rect& aRect = mDDInterface->mPresentationRect;
-			mPointerX = aRect.mX + aRect.mWidth / 2;
-			mPointerY = aRect.mY + aRect.mHeight / 2;
-		}
-		mPadPointerX = mPointerX;
-		mPadPointerY = mPointerY;
-	}
-
-	// D-pad: a step on the press, then after 300 ms one every 110 ms while held.
-	bool isNewDirection = (aPadX != mDPadX || aPadY != mDPadY);
-	mDPadX = aPadX;
-	mDPadY = aPadY;
-	if (aPadX != 0 || aPadY != 0)
-	{
-		if (isNewDirection || (int)(aNow - mDPadNextStep) >= 0)
-		{
-			int aGameX = (int)mPadPointerX, aGameY = (int)mPadPointerY;
-			mDDInterface->RemapMouse(aGameX, aGameY);
-			if (StepPointer(aGameX, aGameY, aPadX, aPadY))
-			{
-				mDPadNextStep = aNow + (isNewDirection ? 300 : 110);
-				MovePointerToGame(aGameX, aGameY);
-				return;
-			}
-		}
-		else
-		{
-			// Waiting to repeat a step: hold still unless there's nothing to step on here.
-			int aGameX = (int)mPadPointerX, aGameY = (int)mPadPointerY;
-			mDDInterface->RemapMouse(aGameX, aGameY);
-			int aStepX = aGameX, aStepY = aGameY;
-			if (StepPointer(aStepX, aStepY, aPadX, aPadY))
-			{
-				if (!mPointerVisible)
-					MovePointer((int)mPadPointerX, (int)mPadPointerY, true);
-				return;
-			}
-		}
-
-		// Nothing to step to: glide like the stick.
-		aDX += aPadX * 0.4;
-		aDY += aPadY * 0.4;
-	}
-
-	// Full deflection crosses the picture in about a second and a half.
-	Rect& aRect = mDDInterface->mPresentationRect;
-	double aPixelsPerMs = aRect.mWidth / 1500.0;
-	mPadPointerX += aDX * aPixelsPerMs * theElapsed;
-	mPadPointerY += aDY * aPixelsPerMs * theElapsed;
-	mPadPointerX = std::max((double)aRect.mX, std::min(mPadPointerX, (double)(aRect.mX + aRect.mWidth - 1)));
-	mPadPointerY = std::max((double)aRect.mY, std::min(mPadPointerY, (double)(aRect.mY + aRect.mHeight - 1)));
-
-	int aX = (int)mPadPointerX, aY = (int)mPadPointerY;
-	if (aX != mPointerX || aY != mPointerY || !mPointerVisible || !mPointerIn)
-		MovePointer(aX, aY, true);
 }
 
 // Scripted input for testing, read from <app data>/autoinput.txt when that file exists. One command per line, each
 // after a delay in milliseconds from the previous one; positions are in game pixels (640x480):
 //   <ms> tap <x> <y>            touch down and up
 //   <ms> down|move|up <x> <y>   touch down, drag, lift
-//   <ms> pad <button> down|up   joystick button number (0 = A, 1 = B, 2 = X, 3 = Y, 10 = +, 11 = -, 12-15 = d-pad
-//                               left/up/right/down, held until its "up")
-//   <ms> stick <dx> <dy> <ms>   hold the left stick at dx,dy (-1..1) for a while
+//   <ms> pad <button> down|up   a button, by PAD_* number (0 = A, 1 = B, 2 = SELECT, 3 = START, 8 = R, 9 = L,
+//                               10 = X, 11 = Y)
 //   <ms> hint | hintdrag        make the game's hinted move by two taps or by a drag (GetAutoInputMove)
 //   <ms> shot                   screenshot to <app data>/_screenshots/
 //   <ms> rec <ms>               record the audio output to <app data>/_capture.raw (16-bit stereo, device rate)
 //   <ms> text <string>          type the rest of the line as characters (WM_CHAR), e.g. a high score name
-//   <ms> focus <0|1>            lose/regain focus as the HOME menu would (SwitchPlatform::SimulateFocus)
+//   <ms> focus <0|1>            lose/regain focus as the HOME menu would (CtrPlatform::SimulateFocus)
 //   <ms> quit
 //   <ms> <other> ...            passed to the game's AutoInputCommand (Bejeweled: endgame)
 // Lines starting with # are ignored.
@@ -3012,64 +2673,33 @@ void SexyAppBase::ProcessAutoInput()
 		mAutoInputIndex++;
 
 		const char* anArgs = aLine + aRead;
-		Rect& aRect = mDDInterface->mPresentationRect;
 		double a1 = 0, a2 = 0, a3 = 0;
 		char aWord[16] = "";
 		int aNumArgs = sscanf(anArgs, "%lf %lf %lf", &a1, &a2, &a3);
-		int aWinX = aRect.mX + (int)(a1 * aRect.mWidth / mWidth);
-		int aWinY = aRect.mY + (int)(a2 * aRect.mHeight / mHeight);
+		int aX = std::max(0, std::min((int)a1, mWidth - 1));
+		int aY = std::max(0, std::min((int)a2, mHeight - 1));
 		fprintf(stderr, "autoinput @%u: %s", (unsigned)aNow, aLine);
 
 		std::string aCommand = aCmd;
 		if (aCommand == "tap" || aCommand == "down" || aCommand == "move" || aCommand == "up")
 		{
-			// As the touch screen sends them: finger events, positions as fractions of the window.
 			if (aNumArgs < 2)
 				continue;
-
-			int aWidth = 0, aHeight = 0;
-			SDL_GetWindowSize(mDDInterface->mWindow, &aWidth, &aHeight);
-			SDL_Event anEvent;
-			SDL_zero(anEvent);
-			anEvent.tfinger.touchId = 1;
-			anEvent.tfinger.fingerId = 0;
-			anEvent.tfinger.x = (aWinX + 0.5f) / aWidth;
-			anEvent.tfinger.y = (aWinY + 0.5f) / aHeight;
-			anEvent.tfinger.pressure = 1.0f;
 			if (aCommand == "move")
+				HandleTouch(TOUCH_MOVE, aX, aY);
+			else
 			{
-				anEvent.type = SDL_FINGERMOTION;
-				SDL_PushEvent(&anEvent);
-				continue;
-			}
-			if (aCommand != "up")
-			{
-				anEvent.type = SDL_FINGERDOWN;
-				SDL_PushEvent(&anEvent);
-			}
-			if (aCommand != "down")
-			{
-				anEvent.type = SDL_FINGERUP;
-				SDL_PushEvent(&anEvent);
+				if (aCommand != "up")
+					HandleTouch(TOUCH_DOWN, aX, aY);
+				if (aCommand != "down")
+					HandleTouch(TOUCH_UP, aX, aY);
 			}
 		}
 		else if (aCommand == "pad")
 		{
 			int aButton = 0;
 			if (sscanf(anArgs, "%d %15s", &aButton, aWord) == 2)
-			{
-				bool isDown = strcmp(aWord, "down") == 0;
-				// The d-pad is read as held state, not as presses.
-				if (aButton >= PAD_LEFT && aButton <= PAD_DOWN)
-					mAutoDPad = isDown ? (mAutoDPad | (1 << aButton)) : (mAutoDPad & ~(1 << aButton));
-				HandleControllerButton(aButton, isDown);
-			}
-		}
-		else if (aCommand == "stick")
-		{
-			mAutoStickX = a1;
-			mAutoStickY = a2;
-			mAutoStickUntil = aNow + (DWORD)a3;
+				HandleButton(aButton, strcmp(aWord, "down") == 0);
 		}
 		else if (aCommand == "hint" || aCommand == "hintdrag")
 		{
@@ -3102,10 +2732,10 @@ void SexyAppBase::ProcessAutoInput()
 		else if (aCommand == "shot")
 			TakeScreenshot();
 		else if (aCommand == "focus")
-			SwitchPlatform::SimulateFocus(a1 != 0);
+			CtrPlatform::SimulateFocus(a1 != 0);
 		else if (aCommand == "rec")
 		{
-			SDLSoundManager* aSoundManager = dynamic_cast<SDLSoundManager*>(mSoundManager);
+			CtrSoundManager* aSoundManager = dynamic_cast<CtrSoundManager*>(mSoundManager);
 			if (aSoundManager != NULL && aNumArgs >= 1)
 				aSoundManager->StartCapture(GetAppDataFolder() + "_capture.raw", (int)a1);
 		}
@@ -3876,7 +3506,7 @@ bool SexyAppBase::ProcessDeferredMessages(bool singleMessage)
 						}
 					}
 
-					// The pointer is "in" while a finger is down, or while a mouse or the controller pointer is out.
+					// The pointer is "in" while the stylus is down.
 					int aPointX = mPointerX;
 					int aPointY = mPointerY;
 					bool isMouseIn = mPointerIn;
@@ -3952,21 +3582,9 @@ std::string	SexyAppBase::NotifyCrashHook()
 // FUNCTION: GAME187 0x44b2b0
 void SexyAppBase::MakeWindow()
 {
+	// There are no windows: the screens are DDInterface's. mHWnd only has to be non-null for code that checks it.
 	if (mHWnd == NULL)
-	{
-		// The screen's own size: 1920x1080 docked, 1280x720 handheld. SDL's Switch driver only follows docking for a
-		// resizable window (it then resizes it and sends SDL_WINDOWEVENT_SIZE_CHANGED), and it takes the mode at
-		// creation as the starting point, so the first size has to match it.
-		bool isDocked = SwitchPlatform::IsDocked();
-		SDL_Window* aWindow = SDL_CreateWindow(SexyStringToStringFast(mTitle).c_str(),
-			SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, isDocked ? 1920 : 1280, isDocked ? 1080 : 720, SDL_WINDOW_RESIZABLE);
-		if (aWindow == NULL)
-		{
-			Popup(std::string("SDL_CreateWindow failed: ") + SDL_GetError());
-			DoExit(1);
-		}
-		mHWnd = (HWND)aWindow;
-	}
+		mHWnd = (HWND)this;
 
 	// Always one fullscreen window; mIsWindowed is only remembered for the options dialog.
 	mIsPhysWindowed = false;
@@ -4074,7 +3692,7 @@ void SexyAppBase::StartLoadingThread()
 
 		// On another core, or the title screen wouldn't draw until loading is done. Image decoding (libpng/libjpeg)
 		// wants more stack than a default thread gets.
-		if (!SwitchPlatform::StartWorkerThread(LoadingThreadProcStub, this, 1024 * 1024))
+		if (!CtrPlatform::StartWorkerThread(LoadingThreadProcStub, this, 1024 * 1024))
 			LoadingThreadProcStub(this);
 	}
 }
@@ -4141,16 +3759,8 @@ void SexyAppBase::EnforceCursor()
 	if (mDDInterface == NULL)
 		return;
 
-	// Only the game's own cursor images are ever drawn, and only while a pointer is over the screen.
-	Image* aCursorImage = NULL;
-	if ((!mSEHOccured) && (mMouseIn) && (mCursorImages[mCursorNum] != NULL) &&
-		((mPlayingDemoBuffer) || (mPointerVisible) || (mCursorNum == CURSOR_CUSTOM)))
-		aCursorImage = mCursorImages[mCursorNum];
-
-	if (mDDInterface->SetCursorImage(aCursorImage))
-		mCustomCursorDirty = true;
-
-	mSysCursor = aCursorImage == NULL;
+	// 3DS port: no cursor is ever drawn; the stylus is the pointer.
+	mSysCursor = true;
 }
 
 // FUNCTION: GAME187 0x44c1d0
@@ -4526,7 +4136,7 @@ bool SexyAppBase::UpdateAppStep(bool* updated)
 	//  condition has already been met by processing windows messages
 	if (mUpdateAppState == UPDATESTATE_MESSAGES)
 	{
-		ProcessSDLEvents();
+		ProcessInput();
 
 		ProcessDemo();
 		if (!ProcessDeferredMessages(true))
@@ -4655,7 +4265,7 @@ void SexyAppBase::Start()
 	PreTerminate();
 
 	{
-		SwitchRegistry::Batch aBatch;	// Switch port: one file write for all the values
+		CtrRegistry::Batch aBatch;	// Switch port: one file write for all the values
 		WriteToRegistry();
 	}
 }
@@ -5032,10 +4642,10 @@ bool SexyAppBase::ChangeDirHook(const char *theIntendedPath)
 MusicInterface* SexyAppBase::CreateMusicInterface(HWND theWindow)
 {
 	// Music shares the sound manager's audio device.
-	SDLSoundManager* aSoundManager = dynamic_cast<SDLSoundManager*>(mSoundManager);
+	CtrSoundManager* aSoundManager = dynamic_cast<CtrSoundManager*>(mSoundManager);
 	if (aSoundManager == NULL)
 		return new MusicInterface;
-	return new SDLMusicInterface(aSoundManager);
+	return new CtrMusicInterface(aSoundManager);
 }
 
 void SexyAppBase::InitPropertiesHook()
@@ -5055,22 +4665,11 @@ void SexyAppBase::Init()
 	if (mShutdown)
 		return;
 
-	if (SDL_InitSubSystem(SDL_INIT_VIDEO | SDL_INIT_EVENTS | SDL_INIT_JOYSTICK) != 0)
-	{
-		Popup(std::string("SDL_Init failed: ") + SDL_GetError());
-		DoExit(1);
-	}
-
-	// SDL's Switch driver has a fixed list of pads and never announces them with SDL_JOYDEVICEADDED, so open them
-	// here; a pad that isn't open sends no events.
-	OpenControllers();
-	fprintf(stderr, "input: %d controllers\n", SDL_NumJoysticks());
-
 	InitPropertiesHook();
 	ReadFromRegistry();
 
-	// Saves, screenshots and demos go on the SD card next to the .nro.
-	SetAppDataFolder("sdmc:/switch/Bejeweled/");
+	// Saves, screenshots and demos go on the SD card.
+	SetAppDataFolder("sdmc:/3ds/Bejeweled/");
 	MkDir(GetAppDataFolder());
 	if (mDemoFileName.find(':') == std::string::npos)
 		mDemoFileName = GetAppDataFolder() + mDemoFileName;
@@ -5121,7 +4720,7 @@ void SexyAppBase::Init()
 	}
 
 	if (mSoundManager == NULL)
-		mSoundManager = new SDLSoundManager();
+		mSoundManager = new CtrSoundManager();
 
 	SetSfxVolume(mSfxVolume);
 

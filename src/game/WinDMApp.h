@@ -51,9 +51,8 @@ public:
 	virtual void LostFocus();        // vtable+0xf4
 	virtual bool GetAutoInputMove(int& theX1, int& theY1, int& theX2, int& theY2); // Switch port: scripted testing
 	virtual void AutoInputCommand(const std::string& theCommand, const char* theArgs); // Switch port: testing
-	virtual bool ControllerButton(int theButton); // Switch port: controller shortcuts
-	virtual bool StepPointer(int& theGameX, int& theGameY, int theDX, int theDY); // Switch port: d-pad on the board
-	void SetSwitchStrings();          // Switch port: console wording over the PC strings
+	virtual bool ControllerButton(int theButton); // console port: button shortcuts
+	void SetConsoleStrings();         // console port: console wording over the PC strings
 
 	// Names below are guesses from what the code does.
 	void NewBoard();

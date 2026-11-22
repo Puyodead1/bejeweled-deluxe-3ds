@@ -1,11 +1,10 @@
-#ifndef __SDLSOUNDMANAGER_H__
-#define __SDLSOUNDMANAGER_H__
+#ifndef __CTRSOUNDMANAGER_H__
+#define __CTRSOUNDMANAGER_H__
 
-// Switch port: the SoundManager standing in for DSoundManager/DSoundInstance. Sounds are decoded at load time (Ogg
-// Vorbis through Tremor, or WAV, with SDL's loaders and converters) into 16-bit stereo at the output rate and mixed on
-// SwitchAudio's thread (the audio renderer in 5 ms buffers; SDL's own Switch audio driver queued ~43 ms). Volume and pan follow DirectSound's rules (volume through DSoundManager::VolumeToDB, pan in
-// hundredths of a dB) so the game's levels sound as they did. The music interface mixes into the same device through
-// SetMusicMixer.
+// 3DS port: the SoundManager standing in for DSoundManager/DSoundInstance. Sounds are decoded at load time (Ogg
+// Vorbis through Tremor, or PCM WAV) into 16-bit stereo at the output rate and mixed on CtrAudio's thread (one NDSP
+// channel). Volume and pan follow DirectSound's rules (volume through DSoundManager::VolumeToDB, pan in hundredths of
+// a dB) so the game's levels sound as they did. The music interface mixes into the same device through SetMusicMixer.
 
 #include "SoundManager.h"
 #include "SoundInstance.h"
@@ -17,21 +16,21 @@
 namespace Sexy
 {
 
-class SDLSoundManager;
+class CtrSoundManager;
 
-struct SDLSoundSample
+struct CtrSoundSample
 {
 	std::vector<int16_t>	mData;			// interleaved stereo at the device rate
 	int						mFrames;
 };
 
-class SDLSoundInstance : public SoundInstance
+class CtrSoundInstance : public SoundInstance
 {
-	friend class SDLSoundManager;
+	friend class CtrSoundManager;
 
 protected:
-	SDLSoundManager*		mManager;
-	SDLSoundSample*			mSample;
+	CtrSoundManager*		mManager;
+	CtrSoundSample*			mSample;
 	double					mBaseVolume;
 	double					mVolume;
 	int						mBasePan;
@@ -51,8 +50,8 @@ protected:
 	void					RehupGains();
 
 public:
-	SDLSoundInstance(SDLSoundManager* theManager, SDLSoundSample* theSample);
-	virtual ~SDLSoundInstance();
+	CtrSoundInstance(CtrSoundManager* theManager, CtrSoundSample* theSample);
+	virtual ~CtrSoundInstance();
 
 	virtual void			Release();
 
@@ -71,23 +70,23 @@ public:
 	virtual double			GetVolume();
 };
 
-class SDLSoundManager : public SoundManager
+class CtrSoundManager : public SoundManager
 {
-	friend class SDLSoundInstance;
+	friend class CtrSoundInstance;
 
 public:
 	// Mixes theFrames stereo frames into theBuffer (interleaved, 16-bit range, summed). Called on the audio thread.
 	typedef void			(*MusicMixFunc)(void* theUserData, int32_t* theBuffer, int theFrames);
 
 protected:
-	bool					mDevice;		// SwitchAudio is open
+	bool					mDevice;		// CtrAudio is open
 	int						mFreq;
 	double					mMasterVolume;
 
-	SDLSoundSample*			mSamples[MAX_SOURCE_SOUNDS];
+	CtrSoundSample*			mSamples[MAX_SOURCE_SOUNDS];
 	double					mBaseVolumes[MAX_SOURCE_SOUNDS];
 	int						mBasePans[MAX_SOURCE_SOUNDS];
-	SDLSoundInstance*		mChannels[MAX_CHANNELS];
+	CtrSoundInstance*		mChannels[MAX_CHANNELS];
 
 	MusicMixFunc			mMusicMix;
 	void*					mMusicUserData;
@@ -99,12 +98,12 @@ protected:
 	static void				AudioCallback(void* theUserData, int16_t* theOut, int theFrames);
 	void					Mix(int16_t* theOut, int theFrames);
 
-	bool					DecodeFile(const std::string& theFilename, SDLSoundSample* theSample);
+	bool					DecodeFile(const std::string& theFilename, CtrSoundSample* theSample);
 	void					ReleaseFreeChannels();
 
 public:
-	SDLSoundManager();
-	virtual ~SDLSoundManager();
+	CtrSoundManager();
+	virtual ~CtrSoundManager();
 
 	// The output is locked while mixing; hold it to change anything the mixer reads.
 	void					Lock();

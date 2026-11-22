@@ -5,14 +5,14 @@
 #include "SexyAppFramework/Graphics.h"
 #include "SexyAppFramework/Color.h"
 #include "SexyAppFramework/Rect.h"
-#include "SwitchPlatform.h"
+#include "CtrPlatform.h"
 
 using namespace Sexy;
 
 namespace
 {
 
-// Switch port: a tap on the name box (or A with the pointer on it) brings up the system keyboard; there's no
+// Console port: a tap on the name box brings up the system keyboard; there's no
 // physical one to type with.
 class NameEditWidget : public EditWidget
 {
@@ -97,7 +97,7 @@ void RecordScoreDialog::OpenKeyboard()
 	mKeyboardShown = true;
 
 	std::string aName;
-	if (!SwitchPlatform::ShowKeyboard(mApp->GetString("RECORDSCOREDLG_ENTER_YOUR_NAME"), mNameEdit->mString, 12, aName))
+	if (!CtrPlatform::ShowKeyboard(mApp->GetString("RECORDSCOREDLG_ENTER_YOUR_NAME"), mNameEdit->mString, 12, aName))
 		return;	// cancelled: the dialog stays, for another try or Cancel
 
 	mNameEdit->SetText(aName);

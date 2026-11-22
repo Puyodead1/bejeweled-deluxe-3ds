@@ -170,7 +170,7 @@ inline DWORD GetCurrentThreadId()
 }
 
 // --- Window messages ----------------------------------------------------------------------------------
-// SexyAppBase still queues input as MSG records (see SexyAppBase::ProcessSDLEvents), so the Win32 numbers stay.
+// SexyAppBase still queues input as MSG records (see SexyAppBase::ProcessInput), so the Win32 numbers stay.
 #define WM_MOVE 0x0003
 #define WM_SIZE 0x0005
 #define WM_CLOSE 0x0010

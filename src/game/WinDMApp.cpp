@@ -13,7 +13,7 @@
 #include "SexyAppFramework/Common.h"
 #include "SexyAppFramework/WidgetManager.h"
 #include "SexyAppFramework/MusicInterface.h"
-#include "SwitchPlatform.h"
+#include "CtrPlatform.h"
 #include "PakLib/PakInterface.h"
 #include "SexyAppFramework/ButtonWidget.h"
 #include "SexyAppFramework/Image.h"
@@ -47,16 +47,15 @@ const char* gSoundNames[21] = {
 };
 
 // GLOBAL: GAME 0x4f6548
-// Switch port: on the heap and deleted in main. As a plain global its destructor ran after main returned, freeing the
-// renderer, textures, sound and window after SwitchPlatform::Exit had shut SDL, audren and RomFS down, which the
-// console reports as a crash on every quit.
+// Console port: on the heap and deleted in main. As a plain global its destructor would run after main returned,
+// freeing the GPU state, sound and images after CtrPlatform::Exit had shut the graphics, DSP and RomFS down.
 WinDMApp& gWinDMApp = *new WinDMApp;
 
 // FUNCTION: GAME 0x40ba8c
 // FUNCTION: GAME187 0x4d43cc
 int main(int argc, char* argv[])
 {
-	SwitchPlatform::Init();
+	CtrPlatform::Init();
 
 	gWinDMApp.Init();
 	gWinDMApp.Start();
@@ -66,7 +65,7 @@ int main(int argc, char* argv[])
 	delete &gWinDMApp;
 
 	fprintf(stderr, "exit: platform\n");
-	SwitchPlatform::Exit();
+	CtrPlatform::Exit();
 	return 0;
 }
 
@@ -471,7 +470,7 @@ void WinDMApp::Init()
 	DIALOG_OK_STRING = GetString("DIALOG_BUTTON_OK");
 	DIALOG_CANCEL_STRING = GetString("DIALOG_BUTTON_CANCEL");
 
-	SetSwitchStrings();
+	SetConsoleStrings();
 
 	mImages = new DDImage*[36];
 	for (int i = 0; i < 36; i++)
@@ -770,9 +769,9 @@ void WinDMApp::FinishLoading()
 	ConfirmLoadGame();
 }
 
-// Switch port: the PC text talks about clicking and keys. The property files come from the game install as they are,
+// Console port: the PC text talks about clicking and keys. The property files come from the game install as they are,
 // so the console wording is put over them here.
-void WinDMApp::SetSwitchStrings()
+void WinDMApp::SetConsoleStrings()
 {
 	SetString("CLICK_HERE_TO_PLAY", L"TAP HERE OR PRESS A TO PLAY!");
 	SetString("CLICK_HERE_TO_CONTINUE", L"Tap or Press Y to Continue!");
@@ -790,15 +789,15 @@ void WinDMApp::SetSwitchStrings()
 	if (aPos != std::string::npos)
 	{
 		aText.erase(aPos);
-		aText += "CONTROLS - Tap a gem, then tap an adjacent gem to swap them, or just drag a gem onto its "
-			"neighbor. With a controller, move with the left stick or the d-pad (a gem at a time) and press A. "
-			"X gives a hint, Y pauses, - opens the options, B backs out of a dialog and + quits.";
+		aText += "CONTROLS - On the touch screen, tap a gem, then tap an adjacent gem to swap them, or just drag "
+			"a gem onto its neighbor. X gives a hint, Y pauses, SELECT opens the options, B backs out of a dialog, "
+			"L or R zooms the top screen in on the board and START quits.";
 	}
 	SetString("FULL_INSTRUCTIONS2", StringToWString(aText));
 }
 
-// Switch port: controller shortcuts. Returning true takes the press (and its release) away from the framework's
-// default handling (A clicks, B is Escape, Y is a key press, which pauses the board, + quits).
+// Console port: button shortcuts. Returning true takes the press (and its release) away from the framework's
+// default handling (B is Escape, Y is a key press, which pauses the board, L/R the magnifier, START quits).
 bool WinDMApp::ControllerButton(int theButton)
 {
 	if (mTitleScreen != NULL)
@@ -815,9 +814,9 @@ bool WinDMApp::ControllerButton(int theButton)
 	if (!mDialogList.empty())
 	{
 		// B answers the top dialog: No where there is one, else its only button. Continue-your-saved-game is left
-		// alone, since No there deletes the save. - closes the options, as it opened them.
+		// alone, since No there deletes the save. SELECT closes the options, as it opened them.
 		Dialog* aDialog = mDialogList.back();
-		if (theButton != PAD_B && !(theButton == PAD_MINUS && aDialog->mId == 2))
+		if (theButton != PAD_B && !(theButton == PAD_SELECT && aDialog->mId == 2))
 			return false;
 		if (aDialog->mId == 16)
 			return true;
@@ -841,7 +840,7 @@ bool WinDMApp::ControllerButton(int theButton)
 			NewBoard();
 			return true;
 		}
-		if (theButton == PAD_MINUS)
+		if (theButton == PAD_SELECT)
 		{
 			ButtonPress(13);
 			ButtonDepress(13);
@@ -857,40 +856,11 @@ bool WinDMApp::ControllerButton(int theButton)
 		ButtonPress(15);
 		ButtonDepress(15);
 		return true;
-	case PAD_MINUS:
+	case PAD_SELECT:
 		ButtonPress(13);
 		ButtonDepress(13);
 		return true;
 	}
 
 	return false;
-}
-
-// Switch port: the d-pad moves the pointer a gem at a time on the board. Off the board (or past its edge) it glides.
-bool WinDMApp::StepPointer(int& theGameX, int& theGameY, int theDX, int theDY)
-{
-	if (mBoard == NULL || mTitleScreen != NULL || mHighScoreWidget != NULL || !mDialogList.empty())
-		return false;
-
-	int aCol = -1, aRow = -1;
-	for (int i = 0; i < 8; i++)
-	{
-		int aX = mBoard->mX + mBoard->GetColX(i);
-		int aY = mBoard->mY + mBoard->GetRowY(i);
-		if (theGameX >= aX && theGameX < aX + 51)
-			aCol = i;
-		if (theGameY >= aY && theGameY < aY + 51)
-			aRow = i;
-	}
-	if (aCol < 0 || aRow < 0)
-		return false;
-
-	aCol += theDX;
-	aRow += theDY;
-	if (aCol < 0 || aCol >= 8 || aRow < 0 || aRow >= 8)
-		return false;
-
-	theGameX = mBoard->mX + mBoard->GetColX(aCol) + 25;
-	theGameY = mBoard->mY + mBoard->GetRowY(aRow) + 25;
-	return true;
 }

@@ -66,6 +66,45 @@ ctr_create_3dsx(smoke
     ROMFS ${ROMFS_DIR}
 )
 
-# --- The game (phase 2) --------------------------------------------------------------------------------
-# src/framework and src/game come from the Switch port unchanged so far; they are built from phase 2 on, once
-# platform/3ds replaces the Switch port's SDL2 and libnx code.
+# --- SexyAppFramework + ImageLib + PakLib ------------------------------------------------------------
+# The decompiled framework is old MSVC code: char is signed there, and it leans on permissive conversions.
+set(SEXY_CXX_FLAGS -fsigned-char -fpermissive -fno-strict-aliasing -Wno-write-strings -Wno-narrowing
+    -Wno-unused-result -Wno-deprecated-declarations -Wno-multichar)
+
+set(SEXY_DIR ${CMAKE_SOURCE_DIR}/src/framework/SexyAppFramework)
+file(GLOB SEXY_SOURCES CONFIGURE_DEPENDS ${SEXY_DIR}/*.cpp)
+# SWTri_*.cpp are #included by SWTri.cpp; they aren't translation units.
+list(FILTER SEXY_SOURCES EXCLUDE REGEX "/SWTri_[^/]*\\.cpp$")
+file(GLOB PLATFORM_SOURCES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/platform/3ds/*.cpp)
+
+add_library(sexyframework STATIC
+    ${SEXY_SOURCES}
+    src/framework/ImageLib/ImageLib.cpp
+    src/framework/PakLib/PakInterface.cpp
+    ${PLATFORM_SOURCES}
+)
+target_include_directories(sexyframework PUBLIC
+    ${CMAKE_SOURCE_DIR}/platform/3ds
+    ${CMAKE_SOURCE_DIR}/src/framework
+    ${SEXY_DIR}
+)
+target_compile_options(sexyframework PUBLIC $<$<COMPILE_LANGUAGE:CXX>:${SEXY_CXX_FLAGS}>)
+target_link_libraries(sexyframework PUBLIC ctr_codecs ctr_modplug ctr_citro3d sprite_shader_bin)
+
+# --- The game ----------------------------------------------------------------------------------------
+file(GLOB GAME_SOURCES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/src/game/*.cpp)
+add_executable(bejeweled ${GAME_SOURCES})
+target_include_directories(bejeweled PRIVATE ${CMAKE_SOURCE_DIR}/src/game)
+target_link_libraries(bejeweled PRIVATE sexyframework)
+
+ctr_generate_smdh(bejeweled.smdh
+    NAME "Bejeweled Deluxe"
+    DESCRIPTION "Bejeweled Deluxe 1.87"
+    AUTHOR "PopCap Games"
+    ICON ${CMAKE_SOURCE_DIR}/res/icon48.png
+)
+ctr_create_3dsx(bejeweled
+    OUTPUT ${CMAKE_BINARY_DIR}/bejeweled.3dsx
+    SMDH ${CMAKE_BINARY_DIR}/bejeweled.smdh
+    ROMFS ${ROMFS_DIR}
+)

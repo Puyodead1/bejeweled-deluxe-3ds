@@ -237,33 +237,17 @@ public:
 	WidgetSafeDeleteList	mSafeDeleteList;
 	bool					mMouseIn;	
 
-	// Where the pointer is in window pixels, whether it is over the screen and whether to draw the game's cursor
-	// (true while a controller drives it; touch has no cursor). Replaces asking Windows for the cursor position.
+	// Where the pointer (the stylus) is in game pixels and whether it is on the screen. Replaces asking Windows for the
+	// cursor position. There is no cursor: touch is the only pointer.
 	int						mPointerX;
 	int						mPointerY;
 	bool					mPointerIn;
-	bool					mPointerVisible;
-	// Controller pointer: sub-pixel position, A held, last stick/d-pad update.
-	double					mPadPointerX;
-	double					mPadPointerY;
-	bool					mPadButtonDown;
-	DWORD					mPadLastTick;
-	void*					mGameControllers[8];
-	int						mPadConsumed;			// buttons whose press ControllerButton took, so it gets the release
-	long long				mTouchFinger;			// the finger acting as the mouse, while mTouchDown
 	bool					mTouchDown;
-	int						mDPadX;					// d-pad direction held (-1, 0, 1) and when it steps again
-	int						mDPadY;
-	DWORD					mDPadNextStep;
-	Dialog*					mPointerToDialog;		// a dialog just opened: put the controller pointer on its button
+	int						mPadConsumed;			// buttons whose press ControllerButton took, so it gets the release
 	// Scripted test input (see LoadAutoInput).
 	std::vector<std::string>	mAutoInput;
 	size_t					mAutoInputIndex;
 	DWORD					mAutoInputNext;
-	double					mAutoStickX;
-	double					mAutoStickY;
-	DWORD					mAutoStickUntil;
-	int						mAutoDPad;				// d-pad buttons held by the script (1 << PAD_LEFT ...)
 	bool					mRunning;
 	bool					mActive;
 	bool					mMinimized;
@@ -598,19 +582,18 @@ public:
 	bool					IsScreenSaver();
 	virtual bool			AppCanRestore();
 
-	// Switch port: replaces WindowProc. Drains SDL's event queue into mDeferredMessages as the Win32 messages the
-	// original window procedure would have queued (mouse/touch, keys, text, focus, close), plus the frame timer.
-	virtual void			ProcessSDLEvents();
+	// 3DS port: replaces WindowProc. Reads the buttons and the touch screen and turns them into the Win32 messages the
+	// original window procedure would have queued (mouse, keys, focus, close) in mDeferredMessages.
+	virtual void			ProcessInput();
 	void					PushMessage(UINT theMessage, WPARAM wParam, LPARAM lParam);
-	void					MovePointer(int theX, int theY, bool fromController);
+	void					MovePointer(int theX, int theY);
 	void					SetAppActive(bool isActive);
 	void					NoteFrameTimes(uint64_t theDrawUs, uint64_t thePresentStartUs, uint64_t thePresentEndUs);
-	void					UpdateControllerPointer(DWORD theElapsed);
-	void					OpenControllers();
-	void					HandleTouch(int theType, int theX, int theY);
-	void					HandleControllerButton(int theButton, bool isDown);
+	// Stylus down / moved / up at a game pixel.
+	enum { TOUCH_DOWN, TOUCH_MOVE, TOUCH_UP };
+	void					HandleTouch(int theType, int theGameX, int theGameY);
+	void					HandleButton(int theButton, bool isDown);
 	void					PushKeyPress(int theKeyCode, int theChar);
-	void					MovePointerToGame(int theGameX, int theGameY);
 	void					LoadAutoInput();
 	void					ProcessAutoInput();
 	// For the autoinput "hint" commands: a good move as two positions in game pixels, or false if there is none.
@@ -619,18 +602,16 @@ public:
 	virtual void			AutoInputCommand(const std::string& theCommand, const char* theArgs) {}
 
 public:
-	// Joystick button numbers on SDL's Switch driver (Nintendo labels).
+	// 3DS buttons, as bit numbers of libctru's KEY_* masks.
 	enum
 	{
-		PAD_A = 0, PAD_B = 1, PAD_X = 2, PAD_Y = 3, PAD_LSTICK = 4, PAD_RSTICK = 5, PAD_L = 6, PAD_R = 7, PAD_ZL = 8,
-		PAD_ZR = 9, PAD_PLUS = 10, PAD_MINUS = 11, PAD_LEFT = 12, PAD_UP = 13, PAD_RIGHT = 14, PAD_DOWN = 15
+		PAD_A = 0, PAD_B = 1, PAD_SELECT = 2, PAD_START = 3, PAD_RIGHT = 4, PAD_LEFT = 5, PAD_UP = 6, PAD_DOWN = 7,
+		PAD_R = 8, PAD_L = 9, PAD_X = 10, PAD_Y = 11, PAD_ZL = 14, PAD_ZR = 15, NUM_PADS = 16
 	};
 
-	// Game hooks for the controller. ControllerButton sees each press first; returning true takes it (and its release)
-	// instead of the default (A/R/ZR click at the pointer, B Escape, + space). StepPointer moves the pointer one step
-	// for the d-pad (in game pixels), returning false where the d-pad should glide the pointer instead.
+	// Game hook for the buttons. ControllerButton sees each press first; returning true takes it (and its release)
+	// instead of the default (B Escape, Y space, L/R the top-screen magnifier).
 	virtual bool			ControllerButton(int theButton) { return false; }
-	virtual bool			StepPointer(int& theGameX, int& theGameY, int theDX, int theDY) { return false; }
 };
 
 extern SexyAppBase* gSexyAppBase;

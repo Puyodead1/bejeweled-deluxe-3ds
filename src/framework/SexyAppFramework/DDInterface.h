@@ -7,10 +7,6 @@
 #include "Rect.h"
 #include "Ratio.h"
 
-struct SDL_Window;
-struct SDL_Renderer;
-struct SDL_Texture;
-
 namespace Sexy
 {
 
@@ -18,13 +14,19 @@ class SexyAppBase;
 class DDImage;
 class Image;
 class MemoryImage;
+struct CtrVideo;
 
 typedef std::set<DDImage*> DDImageSet;
 
-// Switch port of the DirectDraw display. The game draws into mScreenImage, a plain 32-bit ARGB MemoryImage at the
-// game's resolution (640x480). Redraw() uploads it to an SDL streaming texture, draws the cursor on top and presents
-// it scaled to fit the Switch screen (letterboxed, linear filtering); mPresentationRect is that destination rectangle
-// in window pixels, which RemapMouse() uses to turn touch positions into game coordinates.
+// 3DS port of the DirectDraw display. The game draws into mScreenImage, a plain 32-bit ARGB MemoryImage at the
+// game's resolution (640x480) whose pixels live in linear memory. Redraw() has the GPU's DMA engine copy it into a
+// texture (tiling it on the way) and draws that on both screens with citro3d:
+//   bottom screen (320x240, the touch screen): the whole picture at half size, so a touch at (x, y) is game pixel
+//     (2x, 2y);
+//   top screen (400x240): the same picture, pillarboxed, or with SetMagnifier(true) a 400x240 window at full size
+//     centred on the last touch (SetFocusPoint).
+// Window pixels are game pixels here: mPresentationRect is (0, 0, 640, 480) and RemapMouse leaves points alone.
+// There is no cursor: touch is the only pointer.
 // VTABLE: GAME187 0x50cc74
 class DDInterface : public NativeDisplay
 {
@@ -57,25 +59,24 @@ public:
 	DWORD					mMillisecondsPerFrame;
 
 	bool					mInitialized;
-	HWND					mHWnd;		// the SDL_Window, as an opaque handle
+	HWND					mHWnd;		// unused; there are no windows
 	bool					mIsWindowed;
 	DDImage*				mScreenImage;
 	DDImageSet				mDDImageSet;
 	bool					mVideoOnlyDraw;
 	uint32_t				mInitCount;
 
-	int						mNextCursorX;
-	int						mNextCursorY;
-	int						mCursorX;
-	int						mCursorY;
-	Image*					mCursorImage;
-	bool					mShowCursor;
-
 	std::string				mErrorString;
 
-	SDL_Window*				mWindow;
-	SDL_Renderer*			mRenderer;
-	SDL_Texture*			mTexture;
+	// What the top screen shows (see the class comment). mViewDirty asks for a present even if the game drew
+	// nothing new.
+	bool					mMagnifier;
+	int						mFocusX;
+	int						mFocusY;
+	bool					mViewDirty;
+
+	CtrVideo*				mVideo;		// citro3d state, kept out of this header (see DDInterface.cpp)
+	uint32_t*				mLinearBits;	// the screen image's pixels, in linear memory for the DMA engine
 
 public:
 	void					AddDDImage(DDImage* theDDImage);
@@ -84,7 +85,6 @@ public:
 
 	void					Cleanup();
 	void					UpdatePresentationRect();
-	void					DrawCursorTo(uint32_t* theBits, int thePitch);
 
 public:
 	DDInterface(SexyAppBase* theApp);
@@ -98,8 +98,8 @@ public:
 	void					SetVideoOnlyDraw(bool videoOnly);
 	void					RemapMouse(int& theX, int& theY);
 
-	bool					SetCursorImage(Image* theImage);
-	void					SetCursorPos(int theCursorX, int theCursorY);
+	void					SetMagnifier(bool on);
+	void					SetFocusPoint(int theX, int theY);
 };
 
 }

@@ -587,6 +587,7 @@ public:
 	virtual void			ProcessInput();
 	void					PushMessage(UINT theMessage, WPARAM wParam, LPARAM lParam);
 	void					MovePointer(int theX, int theY);
+	void					UpdateViewFocus();
 	void					SetAppActive(bool isActive);
 	void					NoteFrameTimes(uint64_t theDrawUs, uint64_t thePresentStartUs, uint64_t thePresentEndUs);
 	// Stylus down / moved / up at a game pixel.

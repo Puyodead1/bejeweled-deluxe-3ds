@@ -5,7 +5,7 @@ libctru + citro3d), ported from the [Bejeweled Deluxe decomp](https://github.com
 of the Switch port (`bejeweled-deluxe-nx`), whose history this repository continues. The plan is `3DS_PORT.md` in the
 decomp repository.
 
-**Status: phase 6 (saves and system).** `bejeweled.3dsx` builds and runs in Azahar: title screen, loading, a game
+**Status: phase 7 (screens and controls).** `bejeweled.3dsx` builds and runs in Azahar: title screen, loading, a game
 played by touch, saving and continuing, with NDSP audio running (not yet checked by ear). The screen is drawn by the GPU with citro3d:
 about 1–1.5 ms of drawing and 0.5 ms of presenting per frame in Azahar, so the frame rate is whatever the game
 redraws (25 fps on the title screen, 50–60 in play). The phase 3 software renderer is still there for comparison
@@ -33,15 +33,19 @@ draw calls, vertices, texture uploads and texture memory, and how often the game
 | 3DS | Game |
 | --- | --- |
 | Touch | the mouse: tap a gem then its neighbour, or drag one onto the other |
-| A | start from the title screen |
-| B | back out of a dialog |
+| A | start from the title screen; yes / OK on a dialog |
+| B | no / back out of a dialog |
 | X | hint |
 | Y | pause; play again after game over |
 | SELECT | options |
-| L / R | top screen: whole picture, or full size around the last touch |
+| L / R | top screen: close-up or whole picture (remembered) |
 | START | quit (the game in progress is saved) |
 
-Touch is the only pointer; there is no cursor.
+Touch is the only pointer; there is no cursor. The bottom screen always shows the whole picture at half size. The top
+screen starts as a full-size close-up that glides to the open dialog (Options, Quit, game over...) or, with no dialog
+open, to the last touch; L or R switches it to the whole picture and back, and the choice is saved with the settings.
+The Options sliders are dragged by touch, and the name dialog opens the system keyboard by itself (tap the name field
+to open it again).
 
 ## Saves and the system
 

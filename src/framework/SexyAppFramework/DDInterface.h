@@ -29,8 +29,9 @@ typedef std::set<DDImage*> DDImageSet;
 // Either way Redraw() draws that texture on both screens with citro3d:
 //   bottom screen (320x240, the touch screen): the whole picture at half size, so a touch at (x, y) is game pixel
 //     (2x, 2y);
-//   top screen (400x240): the same picture, pillarboxed, or with SetMagnifier(true) a 400x240 window at full size
-//     centred on the last touch (SetFocusPoint).
+//   top screen (400x240): with SetMagnifier(true) (the default; L/R) a 400x240 window at full size around the focus
+//     point (SetFocusPoint: the open dialog, or the last touch), gliding to it rather than jumping; otherwise the
+//     same picture as the bottom screen, pillarboxed.
 // Window pixels are game pixels here: mPresentationRect is (0, 0, 640, 480) and RemapMouse leaves points alone.
 // There is no cursor: touch is the only pointer.
 // VTABLE: GAME187 0x50cc74
@@ -80,6 +81,9 @@ public:
 	int						mFocusX;
 	int						mFocusY;
 	bool					mViewDirty;
+	float					mViewX;		// the magnifier window's top left now, easing towards the focus point
+	float					mViewY;		// (negative: jump straight there)
+	uint64_t				mViewTimeUs;
 
 	CtrVideo*				mVideo;		// citro3d state, kept out of this header (see DDInterface.cpp)
 	uint32_t*				mLinearBits;	// software: the screen image's pixels, in linear memory for the DMA engine

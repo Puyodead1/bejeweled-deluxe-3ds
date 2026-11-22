@@ -3,6 +3,8 @@
 #include "C3DInterface.h"
 #include "SexyAppBase.h"
 #include "AutoCrit.h"
+#include "CtrPlatform.h"
+#include <math.h>
 
 #include <unistd.h>
 
@@ -76,10 +78,12 @@ DDInterface::DDInterface(SexyAppBase* theApp)
 	mVideoOnlyDraw = false;
 	mInitCount = 0;
 
-	mMagnifier = false;
-	mFocusX = mWidth / 2;
-	mFocusY = mHeight / 2;
+	mMagnifier = true;
+	mFocusX = 320;
+	mFocusY = 240;
 	mViewDirty = false;
+	mViewX = mViewY = -1;
+	mViewTimeUs = 0;
 
 	mVideo = NULL;
 	mLinearBits = NULL;
@@ -353,6 +357,7 @@ void DDInterface::SetMagnifier(bool on)
 	{
 		mMagnifier = on;
 		mViewDirty = true;
+		mViewX = mViewY = -1;
 	}
 }
 
@@ -503,11 +508,35 @@ bool DDInterface::Redraw(Rect* theClipRect)
 	else
 		SetFrameTexEnv();
 	// Top: the whole picture at half size in the middle, or a full-size window around the last touch.
+	bool aViewMoving = false;
 	if (mMagnifier)
 	{
-		int x0 = std::max(0, std::min(mFocusX - 200, mWidth - 400));
-		int y0 = std::max(0, std::min(mFocusY - 120, mHeight - 240));
-		AddQuad(&v->mVertices[0], 0, 0, 400, 240, (float)x0, (float)y0, 400, 240);
+		// Ease towards the focus point (time constant 70 ms), so the view glides when a dialog opens or the stylus
+		// lands elsewhere. Whole pixels, so the 1:1 picture stays sharp.
+		float aTargetX = (float)std::max(0, std::min(mFocusX - 200, mWidth - 400));
+		float aTargetY = (float)std::max(0, std::min(mFocusY - 120, mHeight - 240));
+		uint64_t aNowUs = CtrPlatform::MicroTime();
+		if (mViewX < 0 || mViewY < 0)
+		{
+			mViewX = aTargetX;
+			mViewY = aTargetY;
+		}
+		else
+		{
+			float aMs = std::min(100.0f, (aNowUs - mViewTimeUs) / 1000.0f);
+			float k = 1.0f - expf(-aMs / 70.0f);
+			mViewX += (aTargetX - mViewX) * k;
+			mViewY += (aTargetY - mViewY) * k;
+			if (fabsf(aTargetX - mViewX) < 0.5f && fabsf(aTargetY - mViewY) < 0.5f)
+			{
+				mViewX = aTargetX;
+				mViewY = aTargetY;
+			}
+			else
+				aViewMoving = true;
+		}
+		mViewTimeUs = aNowUs;
+		AddQuad(&v->mVertices[0], 0, 0, 400, 240, floorf(mViewX + 0.5f), floorf(mViewY + 0.5f), 400, 240);
 	}
 	else
 		AddQuad(&v->mVertices[0], 40, 0, 320, 240, 0, 0, (float)mWidth, (float)mHeight);
@@ -529,7 +558,7 @@ bool DDInterface::Redraw(Rect* theClipRect)
 	if (mC3DInterface != NULL)
 		mC3DInterface->SceneEnded();
 
-	mViewDirty = false;
+	mViewDirty = aViewMoving;	// keep presenting until the view gets there
 	mInRedraw = false;
 	return true;
 }

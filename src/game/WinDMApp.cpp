@@ -817,8 +817,8 @@ void WinDMApp::SetConsoleStrings()
 	{
 		aText.erase(aPos);
 		aText += "CONTROLS - On the touch screen, tap a gem, then tap an adjacent gem to swap them, or just drag "
-			"a gem onto its neighbor. X gives a hint, Y pauses, SELECT opens the options, B backs out of a dialog, "
-			"L or R zooms the top screen in on the board and START quits.";
+			"a gem onto its neighbor. X gives a hint, Y pauses, SELECT opens the options, A and B answer a dialog "
+			"(yes and no), L or R switches the top screen between a close-up and the whole board, and START quits.";
 	}
 	SetString("FULL_INSTRUCTIONS2", StringToWString(aText));
 }
@@ -840,14 +840,17 @@ bool WinDMApp::ControllerButton(int theButton)
 
 	if (!mDialogList.empty())
 	{
-		// B answers the top dialog: No where there is one, else its only button. Continue-your-saved-game is left
-		// alone, since No there deletes the save. SELECT closes the options, as it opened them.
+		// A answers the top dialog with Yes (or OK); B with No where there is one, else its only button.
+		// Continue-your-saved-game ignores B, since No there deletes the save. SELECT closes the options, as it
+		// opened them.
 		Dialog* aDialog = mDialogList.back();
-		if (theButton != PAD_B && !(theButton == PAD_SELECT && aDialog->mId == 2))
+		bool isYes = theButton == PAD_A;
+		if (!isYes && theButton != PAD_B && !(theButton == PAD_SELECT && aDialog->mId == 2))
 			return false;
-		if (aDialog->mId == 16)
+		if (!isYes && aDialog->mId == 16)
 			return true;
-		DialogButton* aButton = (aDialog->mNoButton != NULL) ? aDialog->mNoButton : aDialog->mYesButton;
+		DialogButton* aButton = isYes ? aDialog->mYesButton :
+			(aDialog->mNoButton != NULL) ? aDialog->mNoButton : aDialog->mYesButton;
 		if (aButton == NULL)
 			return false;
 		aDialog->ButtonPress(aButton->mId);

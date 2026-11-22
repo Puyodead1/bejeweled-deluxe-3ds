@@ -1323,6 +1323,8 @@ void SexyAppBase::WriteToRegistry()
 	RegistryWriteInteger("CustomCursors", mCustomCursorsEnabled ? 1 : 0);
 	RegistryWriteInteger("InProgress", 0);
 	RegistryWriteBoolean("WaitForVSync", mWaitForVSync);
+	if (mDDInterface != NULL)
+		RegistryWriteBoolean("TopScreenZoom", mDDInterface->mMagnifier);	// 3DS: L/R
 }
 
 bool SexyAppBase::RegistryEraseKey(const SexyString& _theKeyName)
@@ -2533,6 +2535,8 @@ void SexyAppBase::ProcessInput()
 		}
 	}
 
+	UpdateViewFocus();
+
 	// Stand-in for the 10 ms SetTimer the window used to get.
 	DWORD aTimeNow = GetTickCount();
 	static DWORD aLastTimerPush = 0;
@@ -2571,6 +2575,39 @@ void SexyAppBase::ResumedFromSuspend()
 		mWidgetManager->MarkAllDirty();
 }
 
+// What the top screen's magnifier looks at: the top dialog when it fits in the 400x240 window, so its text and buttons
+// can be read at full size; otherwise the last touch, kept inside the dialog if one is open.
+void SexyAppBase::UpdateViewFocus()
+{
+	if (mDDInterface == NULL)
+		return;
+	int aX = mPointerX;
+	int aY = mPointerY;
+	if (aX < 0 || aY < 0)	// no touch yet: the middle
+	{
+		aX = mWidth / 2;
+		aY = mHeight / 2;
+	}
+	if (!mDialogList.empty())
+	{
+		Dialog* aDialog = mDialogList.back();
+		if (aDialog->mVisible && aDialog->mWidth > 0 && aDialog->mHeight > 0)
+		{
+			if (aDialog->mWidth <= 400 && aDialog->mHeight <= 240)
+			{
+				aX = aDialog->mX + aDialog->mWidth / 2;
+				aY = aDialog->mY + aDialog->mHeight / 2;
+			}
+			else
+			{
+				aX = std::max(aDialog->mX + 200, std::min(aX, aDialog->mX + aDialog->mWidth - 200));
+				aY = std::max(aDialog->mY + 120, std::min(aY, aDialog->mY + aDialog->mHeight - 120));
+			}
+		}
+	}
+	mDDInterface->SetFocusPoint(aX, aY);
+}
+
 // The window gained or lost focus (WM_ACTIVATEAPP on the PC); RehupFocus then pauses/mutes or resumes.
 void SexyAppBase::SetAppActive(bool isActive)
 {
@@ -2580,13 +2617,12 @@ void SexyAppBase::SetAppActive(bool isActive)
 	PushMessage(WM_ACTIVATEAPP, isActive ? 1 : 0, 0);
 }
 
-// Moves the pointer (game pixels) and tells the widgets. The top screen's magnifier follows it.
+// Moves the pointer (game pixels) and tells the widgets. The top screen's magnifier follows it (UpdateViewFocus).
 void SexyAppBase::MovePointer(int theX, int theY)
 {
 	mPointerX = theX;
 	mPointerY = theY;
 	mPointerIn = true;
-	mDDInterface->SetFocusPoint(theX, theY);
 	PushMessage(WM_MOUSEMOVE, 0, MAKELONG(theX, theY));
 }
 
@@ -3655,7 +3691,12 @@ void SexyAppBase::MakeWindow()
 	mIsPhysWindowed = false;
 
 	if (mDDInterface == NULL)
+	{
 		mDDInterface = new DDInterface(this);
+		bool aZoom = true;
+		RegistryReadBoolean("TopScreenZoom", &aZoom);
+		mDDInterface->SetMagnifier(aZoom);
+	}
 
 	int aResult = InitDDInterface();
 	if (aResult != DDInterface::RESULT_OK)

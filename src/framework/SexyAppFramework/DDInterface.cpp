@@ -19,6 +19,10 @@ using namespace Sexy;
 static const int TEX_WIDTH = 1024;
 static const int TEX_HEIGHT = 512;
 
+// SetTopImage's texture: up to 400x240 of picture (an 800x480 image at half size).
+static const int TOP_TEX_WIDTH = 512;
+static const int TOP_TEX_HEIGHT = 256;
+
 namespace Sexy
 {
 
@@ -35,6 +39,9 @@ struct CtrVideo
 	C3D_RenderTarget*		mBottom;
 	C3D_Tex					mTex[2];
 	bool					mTexValid[2];
+	C3D_Tex					mTopTex;		// SetTopImage's picture (TOP_TEX_WIDTH x TOP_TEX_HEIGHT, linear memory)
+	bool					mTopTexValid;
+	bool					mTopTexFree;	// free mTopTex once the GPU has finished the frame that may still read it
 	int						mNextTex;
 	uint32_t*				mTiled;			// the frame after tiling, before it goes into the texture
 	DVLB_s*					mShader;
@@ -78,12 +85,14 @@ DDInterface::DDInterface(SexyAppBase* theApp)
 	mVideoOnlyDraw = false;
 	mInitCount = 0;
 
-	mMagnifier = true;
+	mTopView = TOP_VIEW_ART;
+	mTopImageForced = false;
 	mFocusX = 320;
 	mFocusY = 240;
 	mViewDirty = false;
 	mViewX = mViewY = -1;
 	mViewTimeUs = 0;
+	mTopImageWidth = mTopImageHeight = 0;
 
 	mVideo = NULL;
 	mLinearBits = NULL;
@@ -156,6 +165,9 @@ void DDInterface::Cleanup()
 		for (int i = 0; i < 2; i++)
 			if (v->mTexValid[i])
 				C3D_TexDelete(&v->mTex[i]);
+		if (v->mTopTexValid)
+			C3D_TexDelete(&v->mTopTex);
+		mTopImageWidth = mTopImageHeight = 0;
 		if (v->mTop != NULL)
 			C3D_RenderTargetDelete(v->mTop);
 		if (v->mBottom != NULL)
@@ -351,11 +363,23 @@ void DDInterface::RemapMouse(int& theX, int& theY)
 	// Touch positions arrive in game pixels already.
 }
 
-void DDInterface::SetMagnifier(bool on)
+void DDInterface::SetTopView(int theView)
 {
-	if (on != mMagnifier)
+	if (theView < 0 || theView >= NUM_TOP_VIEWS)
+		theView = TOP_VIEW_ART;
+	if (theView != mTopView)
 	{
-		mMagnifier = on;
+		mTopView = theView;
+		mViewDirty = true;
+		mViewX = mViewY = -1;
+	}
+}
+
+void DDInterface::ForceTopImage(bool force)
+{
+	if (force != mTopImageForced)
+	{
+		mTopImageForced = force;
 		mViewDirty = true;
 		mViewX = mViewY = -1;
 	}
@@ -367,7 +391,7 @@ void DDInterface::SetFocusPoint(int theX, int theY)
 	{
 		mFocusX = theX;
 		mFocusY = theY;
-		if (mMagnifier)
+		if (mTopView == TOP_VIEW_CLOSEUP)
 			mViewDirty = true;
 	}
 }
@@ -377,6 +401,106 @@ void DDInterface::Restored()
 	mViewDirty = true;
 	if (mC3DInterface != NULL)
 		mC3DInterface->InvalidateTarget();
+}
+
+void DDInterface::SetTopImage(MemoryImage* theImage)
+{
+	AutoCrit anAutoCrit(mCritSect);
+
+	if (mVideo == NULL)
+		return;
+	CtrVideo* v = mVideo;
+	mViewDirty = true;
+	mViewX = mViewY = -1;
+
+	int aWidth = theImage != NULL ? theImage->mWidth / 2 : 0;
+	int aHeight = theImage != NULL ? theImage->mHeight / 2 : 0;
+	if (aWidth <= 0 || aHeight <= 0 || aWidth > 400 || aHeight > 240)
+	{
+		// Back to the game's picture. The last frame may still read the texture; Redraw frees it.
+		if (theImage != NULL)
+			fprintf(stderr, "video: SetTopImage: %dx%d is too big for the top screen\n", theImage->mWidth, theImage->mHeight);
+		if (mTopImageWidth > 0)
+			v->mTopTexFree = true;
+		mTopImageWidth = mTopImageHeight = 0;
+		return;
+	}
+
+	if (!v->mTopTexValid)
+	{
+		// Linear memory rather than VRAM, which the HOME menu may overwrite.
+		v->mTopTexValid = C3D_TexInit(&v->mTopTex, TOP_TEX_WIDTH, TOP_TEX_HEIGHT, GPU_RGBA8);
+		if (!v->mTopTexValid)
+		{
+			fprintf(stderr, "video: SetTopImage: out of linear memory\n");
+			return;
+		}
+		C3D_TexSetFilter(&v->mTopTex, GPU_LINEAR, GPU_LINEAR);
+		C3D_TexSetWrap(&v->mTopTex, GPU_CLAMP_TO_EDGE, GPU_CLAMP_TO_EDGE);
+	}
+	v->mTopTexFree = false;
+
+	uint32_t* aLinear = (uint32_t*)linearAlloc(TOP_TEX_WIDTH * TOP_TEX_HEIGHT * 4);
+	if (aLinear == NULL)
+	{
+		fprintf(stderr, "video: SetTopImage: out of linear memory\n");
+		return;
+	}
+
+	// The GPU renderer may have dropped the image's bits once its texture had them; GetBits reads them back, and
+	// they're dropped again afterwards.
+	bool aRepurge = theImage->mBits == NULL && theImage->mD3DData != NULL && theImage->mPurgeBits;
+	const uint32_t* aSrc = theImage->GetBits();
+	int aSrcWidth = theImage->mWidth;
+
+	// Half size, each pixel the average of 2x2 (0xAARRGGBB in, the texture's 0xRRGGBBAA out, opaque).
+	memset(aLinear, 0, TOP_TEX_WIDTH * TOP_TEX_HEIGHT * 4);
+	for (int y = 0; y < aHeight; y++)
+	{
+		const uint32_t* aRow0 = aSrc + (y * 2) * aSrcWidth;
+		const uint32_t* aRow1 = aRow0 + aSrcWidth;
+		uint32_t* aDest = aLinear + y * TOP_TEX_WIDTH;
+		for (int x = 0; x < aWidth; x++)
+		{
+			uint32_t p[4] = { aRow0[x * 2], aRow0[x * 2 + 1], aRow1[x * 2], aRow1[x * 2 + 1] };
+			uint32_t r = 0, g = 0, b = 0;
+			for (int i = 0; i < 4; i++)
+			{
+				r += (p[i] >> 16) & 0xFF;
+				g += (p[i] >> 8) & 0xFF;
+				b += p[i] & 0xFF;
+			}
+			aDest[x] = (((r + 2) / 4) << 24) | (((g + 2) / 4) << 16) | (((b + 2) / 4) << 8) | 0xFF;
+		}
+	}
+	if (aRepurge)
+		theImage->PurgeBits();
+
+	// Tiled by the display transfer engine, as Redraw does with the software renderer's frame (so the same texture
+	// coordinates apply).
+	GSPGPU_FlushDataCache(aLinear, TOP_TEX_WIDTH * TOP_TEX_HEIGHT * 4);
+	C3D_SyncDisplayTransfer((u32*)aLinear, GX_BUFFER_DIM(TOP_TEX_WIDTH, TOP_TEX_HEIGHT), (u32*)v->mTopTex.data,
+		GX_BUFFER_DIM(TOP_TEX_WIDTH, TOP_TEX_HEIGHT),
+		GX_TRANSFER_FLIP_VERT(0) | GX_TRANSFER_OUT_TILED(1) | GX_TRANSFER_RAW_COPY(0) |
+		GX_TRANSFER_IN_FORMAT(GX_TRANSFER_FMT_RGBA8) | GX_TRANSFER_OUT_FORMAT(GX_TRANSFER_FMT_RGBA8) |
+		GX_TRANSFER_SCALING(GX_TRANSFER_SCALE_NO));
+	linearFree(aLinear);
+
+	mTopImageWidth = aWidth;
+	mTopImageHeight = aHeight;
+}
+
+// The texture combiner for a texture that holds its colours the GPU's way round: as it is, opaque.
+static void SetPlainTexEnv()
+{
+	C3D_TexEnv* anEnv = C3D_GetTexEnv(0);
+	C3D_TexEnvInit(anEnv);
+	C3D_TexEnvSrc(anEnv, C3D_RGB, GPU_TEXTURE0, GPU_PRIMARY_COLOR, GPU_PRIMARY_COLOR);
+	C3D_TexEnvFunc(anEnv, C3D_RGB, GPU_REPLACE);
+	C3D_TexEnvSrc(anEnv, C3D_Alpha, GPU_PRIMARY_COLOR, GPU_PRIMARY_COLOR, GPU_PRIMARY_COLOR);
+	C3D_TexEnvFunc(anEnv, C3D_Alpha, GPU_REPLACE);
+	for (int i = 1; i < 6; i++)
+		C3D_TexEnvInit(C3D_GetTexEnv(i));
 }
 
 // The texture combiner. The frame's pixels are 0xAARRGGBB words; the GPU reads an RGBA8 texel as 0xRRGGBBAA, so it
@@ -412,11 +536,12 @@ static void SetFrameTexEnv()
 }
 
 // A screen-space rectangle showing the game rectangle (theSrcX, theSrcY, theSrcW, theSrcH).
-static void AddQuad(CtrVertex* theVerts, float x, float y, float w, float h, float theSrcX, float theSrcY, float theSrcW, float theSrcH)
+static void AddQuad(CtrVertex* theVerts, float x, float y, float w, float h, float theSrcX, float theSrcY, float theSrcW, float theSrcH,
+	float theTexWidth = TEX_WIDTH, float theTexHeight = TEX_HEIGHT)
 {
 	// Tiling put game row 0 in the texture's first memory row, which the GPU samples as t = 1 (the top).
-	float u0 = theSrcX / TEX_WIDTH, u1 = (theSrcX + theSrcW) / TEX_WIDTH;
-	float v0 = 1.0f - theSrcY / TEX_HEIGHT, v1 = 1.0f - (theSrcY + theSrcH) / TEX_HEIGHT;
+	float u0 = theSrcX / theTexWidth, u1 = (theSrcX + theSrcW) / theTexWidth;
+	float v0 = 1.0f - theSrcY / theTexHeight, v1 = 1.0f - (theSrcY + theSrcH) / theTexHeight;
 	const float aCorner[4][4] = { { x, y, u0, v0 }, { x + w, y, u1, v0 }, { x, y + h, u0, v1 }, { x + w, y + h, u1, v1 } };
 	static const int kOrder[6] = { 0, 2, 1, 1, 2, 3 };
 	for (int i = 0; i < 6; i++)
@@ -492,24 +617,23 @@ bool DDInterface::Redraw(Rect* theClipRect)
 	C3D_DepthTest(false, GPU_ALWAYS, GPU_WRITE_COLOR);
 	C3D_CullFace(GPU_CULL_NONE);
 	C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_ONE, GPU_ZERO, GPU_ONE, GPU_ZERO);
-	C3D_TexBind(0, aTex);
-	if (mC3DInterface != NULL)
+	// The frame has begun, so the GPU is done with the last one: a top image dropped since then can go.
+	if (v->mTopTexFree && v->mTopTexValid)
 	{
-		// The render target is a native RGBA8 texture: use it as it is.
-		C3D_TexEnv* anEnv = C3D_GetTexEnv(0);
-		C3D_TexEnvInit(anEnv);
-		C3D_TexEnvSrc(anEnv, C3D_RGB, GPU_TEXTURE0, GPU_PRIMARY_COLOR, GPU_PRIMARY_COLOR);
-		C3D_TexEnvFunc(anEnv, C3D_RGB, GPU_REPLACE);
-		C3D_TexEnvSrc(anEnv, C3D_Alpha, GPU_PRIMARY_COLOR, GPU_PRIMARY_COLOR, GPU_PRIMARY_COLOR);
-		C3D_TexEnvFunc(anEnv, C3D_Alpha, GPU_REPLACE);
-		for (int i = 1; i < 6; i++)
-			C3D_TexEnvInit(C3D_GetTexEnv(i));
+		C3D_TexDelete(&v->mTopTex);
+		v->mTopTexValid = false;
 	}
-	else
-		SetFrameTexEnv();
-	// Top: the whole picture at half size in the middle, or a full-size window around the last touch.
+	v->mTopTexFree = false;
+	bool aTopImage = (mTopView == TOP_VIEW_ART || mTopImageForced) && mTopImageWidth > 0 && v->mTopTexValid;
+
+	// Top (see the class comment): SetTopImage's picture, a full-size window around the focus point, or the whole
+	// picture at half size in the middle (also the art view's stand-in while there's no picture).
 	bool aViewMoving = false;
-	if (mMagnifier)
+	if (aTopImage)
+		AddQuad(&v->mVertices[0], (float)((400 - mTopImageWidth) / 2), (float)((240 - mTopImageHeight) / 2),
+			(float)mTopImageWidth, (float)mTopImageHeight, 0, 0, (float)mTopImageWidth, (float)mTopImageHeight,
+			TOP_TEX_WIDTH, TOP_TEX_HEIGHT);
+	else if (mTopView == TOP_VIEW_CLOSEUP)
 	{
 		// Ease towards the focus point (time constant 70 ms), so the view glides when a dialog opens or the stylus
 		// lands elsewhere. Whole pixels, so the 1:1 picture stays sharp.
@@ -544,11 +668,24 @@ bool DDInterface::Redraw(Rect* theClipRect)
 	AddQuad(&v->mVertices[6], 0, 0, 320, 240, 0, 0, (float)mWidth, (float)mHeight);
 	GSPGPU_FlushDataCache(v->mVertices, 12 * sizeof(CtrVertex));
 
+	// The render target is a native RGBA8 texture, used as it is; the software renderer's frame needs its channels
+	// put right (SetFrameTexEnv).
 	C3D_RenderTargetClear(v->mTop, C3D_CLEAR_COLOR, 0x000000FF, 0);
 	C3D_FrameDrawOn(v->mTop);
 	C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, v->mProjectionLoc, &v->mTopProj);
+	C3D_TexBind(0, aTopImage ? &v->mTopTex : aTex);
+	if (aTopImage || mC3DInterface != NULL)
+		SetPlainTexEnv();
+	else
+		SetFrameTexEnv();
 	C3D_DrawArrays(GPU_TRIANGLES, 0, 6);
 
+	if (aTopImage)
+	{
+		C3D_TexBind(0, aTex);
+		if (mC3DInterface == NULL)
+			SetFrameTexEnv();
+	}
 	C3D_RenderTargetClear(v->mBottom, C3D_CLEAR_COLOR, 0x000000FF, 0);
 	C3D_FrameDrawOn(v->mBottom);
 	C3D_FVUnifMtx4x4(GPU_VERTEX_SHADER, v->mProjectionLoc, &v->mBottomProj);

@@ -42,6 +42,30 @@ static void LoseFocus()
 		gSuspendProc(gSuspendArg);
 }
 
+static const char* LOG_FILE = "sdmc:/3ds/Bejeweled/bejeweled.log";
+
+// Sleep switches Wi-Fi off, which ends the 3dslink session, so the log moves to the file (as when not started by
+// 3dslink) before the save that goes with sleeping.
+static void MoveLogToFile()
+{
+	if (g3dslinkSocket < 0)
+		return;
+	fprintf(stderr, "log: continued in %s (sleep turns Wi-Fi off)\n", LOG_FILE);
+	fflush(stdout);
+	fflush(stderr);
+	svcSleepThread(100000000ULL);	// let 3dslink receive it
+	// Both standard streams are on the socket (link3dsStdio); reopening them closes those descriptors first.
+	if (freopen(LOG_FILE, "w", stderr) != NULL)
+		setvbuf(stderr, NULL, _IOLBF, 1024);
+	freopen(LOG_FILE, "a", stdout);
+	close(g3dslinkSocket);
+	socExit();
+	g3dslinkSocket = -1;
+	free(gSocBuffer);
+	gSocBuffer = NULL;
+	fprintf(stderr, "log: from 3dslink, going to sleep\n");
+}
+
 // Runs on the main thread, inside aptMainLoop.
 static void AptHook(APT_HookType theHook, void* theParam)
 {
@@ -50,6 +74,8 @@ static void AptHook(APT_HookType theHook, void* theParam)
 	case APTHOOK_ONSUSPEND:
 	case APTHOOK_ONSLEEP:
 		fprintf(stderr, "applet: %s\n", theHook == APTHOOK_ONSLEEP ? "sleep" : "suspended");
+		if (theHook == APTHOOK_ONSLEEP)
+			MoveLogToFile();
 		LoseFocus();
 		break;
 	case APTHOOK_ONRESTORE:
@@ -187,8 +213,26 @@ void CtrPlatform::Init()
 	mkdir("sdmc:/3ds/Bejeweled", 0777);
 	if (g3dslinkSocket < 0)
 	{
-		if (freopen("sdmc:/3ds/Bejeweled/bejeweled.log", "w", stderr) != NULL)
+		if (freopen(LOG_FILE, "w", stderr) != NULL)
 			setvbuf(stderr, NULL, _IOLBF, 1024);
+	}
+	else
+	{
+		// The last log written to the SD card (a run not started by 3dslink, or what came after sleeping), so it can be
+		// read without taking the card out. The last 32 KB at most.
+		FILE* aPrev = fopen(LOG_FILE, "r");
+		if (aPrev != NULL)
+		{
+			fseek(aPrev, 0, SEEK_END);
+			long aSize = ftell(aPrev);
+			fseek(aPrev, aSize > 32768 ? aSize - 32768 : 0, SEEK_SET);
+			fprintf(stderr, "---- previous %s (%ld bytes) ----\n", LOG_FILE, aSize);
+			char aLine[256];
+			while (fgets(aLine, sizeof(aLine), aPrev) != NULL)
+				fprintf(stderr, "prev| %s", aLine);
+			fprintf(stderr, "---- end of previous log ----\n");
+			fclose(aPrev);
+		}
 	}
 
 	fprintf(stderr, "Bejeweled Deluxe 1.87, 3DS port (%s)\n", IsNew3DS() ? "New 3DS" : "Old 3DS");

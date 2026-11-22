@@ -83,6 +83,7 @@ struct C3DTexture
 	std::vector<C3DSeg>		mRows;
 	std::vector<C3DPiece>	mPieces;		// row by row
 	int						mMemSize;
+	int						mUploads;		// for the log: an image the game keeps changing costs an upload each time
 };
 
 struct C3DState
@@ -792,6 +793,7 @@ bool C3DInterface::CreateImageTexture(MemoryImage* theImage)
 		t->mFormat = GPU_RGBA8;
 		t->mFlags = 0;
 		t->mMemSize = 0;
+		t->mUploads = 0;
 		theImage->mD3DData = t;
 		mImageSet.insert(theImage);
 	}
@@ -855,6 +857,11 @@ bool C3DInterface::CreateImageTexture(MemoryImage* theImage)
 	t->mBitsChangedCount = theImage->mBitsChangedCount;
 	mStatUploads++;
 	mStatUploadBytes += t->mMemSize;
+	t->mUploads++;
+	if (t->mUploads == 10 || t->mUploads == 100 || t->mUploads == 1000 || t->mUploads % 10000 == 0)
+		fprintf(stderr, "c3d: uploaded %d times: %dx%d %s (%d KB of texture)\n", t->mUploads, theImage->mWidth,
+			theImage->mHeight, theImage->mFilePath.empty() ? "(made by the game)" : theImage->mFilePath.c_str(),
+			t->mMemSize / 1024);
 
 	// The texture is the copy now; the software renderer's caches aren't needed, and images loaded with mPurgeBits
 	// drop their bits (RecoverBits brings them back if anything asks).

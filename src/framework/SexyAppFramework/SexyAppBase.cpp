@@ -1324,7 +1324,7 @@ void SexyAppBase::WriteToRegistry()
 	RegistryWriteInteger("InProgress", 0);
 	RegistryWriteBoolean("WaitForVSync", mWaitForVSync);
 	if (mDDInterface != NULL)
-		RegistryWriteBoolean("TopScreenZoom", mDDInterface->mMagnifier);	// 3DS: L/R
+		RegistryWriteInteger("TopScreenView", mDDInterface->mTopView);	// 3DS: L/R
 }
 
 bool SexyAppBase::RegistryEraseKey(const SexyString& _theKeyName)
@@ -2696,8 +2696,8 @@ void SexyAppBase::HandleButton(int theButton, bool isDown)
 
 	case PAD_L:
 	case PAD_R:
-		// The top screen: the whole picture, or full size around the last touch.
-		mDDInterface->SetMagnifier(!mDDInterface->mMagnifier);
+		// The top screen: the art, a close-up around the dialog or the last touch, or the whole picture.
+		mDDInterface->SetTopView((mDDInterface->mTopView + 1) % DDInterface::NUM_TOP_VIEWS);
 		break;
 
 	case PAD_START:
@@ -3693,9 +3693,9 @@ void SexyAppBase::MakeWindow()
 	if (mDDInterface == NULL)
 	{
 		mDDInterface = new DDInterface(this);
-		bool aZoom = true;
-		RegistryReadBoolean("TopScreenZoom", &aZoom);
-		mDDInterface->SetMagnifier(aZoom);
+		int aTopView = DDInterface::TOP_VIEW_ART;
+		RegistryReadInteger("TopScreenView", &aTopView);
+		mDDInterface->SetTopView(aTopView);
 	}
 
 	int aResult = InitDDInterface();

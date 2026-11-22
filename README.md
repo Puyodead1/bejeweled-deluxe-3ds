@@ -5,12 +5,11 @@ libctru + citro3d), ported from the [Bejeweled Deluxe decomp](https://github.com
 of the Switch port (`bejeweled-deluxe-nx`), whose history this repository continues. The plan is `3DS_PORT.md` in the
 decomp repository.
 
-**Status: phase 7 (screens and controls).** `bejeweled.3dsx` builds and runs in Azahar: title screen, loading, a game
-played by touch, saving and continuing, with NDSP audio running (not yet checked by ear). The screen is drawn by the GPU with citro3d:
-about 1–1.5 ms of drawing and 0.5 ms of presenting per frame in Azahar, so the frame rate is whatever the game
-redraws (25 fps on the title screen, 50–60 in play). The phase 3 software renderer is still there for comparison
-and draws at about 5 fps (140–190 ms per frame). Not yet tried on a console.
-
+**Status: phase 8 (console testing).** `bejeweled.3dsx` runs on an Old 3DS: title screen, loading (about 10.5 s;
+5 s in Azahar), a game played by touch, saving and continuing, the HOME menu. The screen is drawn by the GPU with
+citro3d: about 2-3 ms of drawing and 0.5 ms of presenting per frame on the console, so the frame rate is whatever
+the game redraws (40-70 fps in play). The phase 3 software renderer is still there for comparison and draws at about
+5 fps in Azahar.
 ## Renderers
 
 The game draws into a 640x480 screen image, the way it drew into a DirectDraw surface on Windows, in one of two
@@ -38,12 +37,17 @@ draw calls, vertices, texture uploads and texture memory, and how often the game
 | X | hint |
 | Y | pause; play again after game over |
 | SELECT | options |
-| L / R | top screen: close-up or whole picture (remembered) |
+| L / R | top screen: title art, close-up or whole picture (remembered) |
 | START | quit (the game in progress is saved) |
 
-Touch is the only pointer; there is no cursor. The bottom screen always shows the whole picture at half size. The top
-screen starts as a full-size close-up that glides to the open dialog (Options, Quit, game over...) or, with no dialog
-open, to the last touch; L or R switches it to the whole picture and back, and the choice is saved with the settings.
+Touch is the only pointer; there is no cursor. The bottom screen is the game, the whole picture at half size. The top
+screen has its own picture: the title art, without the loading bar and "tap here", which stay on the bottom screen.
+That's all it shows on the title screen; in play, L or R steps it through two more views and back, and the choice is
+saved with the settings:
+- a full-size close-up that glides to the open dialog (Options, Quit, game over...) or, with no dialog open, to the
+  last touch;
+- the same whole picture as the bottom screen.
+
 The Options sliders are dragged by touch, and the name dialog opens the system keyboard by itself (tap the name field
 to open it again).
 

@@ -842,9 +842,9 @@ void Board::FillBoard()
 // FUNCTION: GAME187 0x4cb284
 void Board::UpdateLevelTransition()
 {
-	Graphics g(m_unk0x280);
-	g.ClipRect(0, m_unk0x2c8, mWidth, 3);
-	g.DrawImage(m_unk0x284, 0, 0);
+	// 3DS port: the original copied this update's 3-row strip of the new background (m_unk0x284) into the shown one
+	// (m_unk0x280) here. With the GPU renderer that re-uploads the whole 640x480 texture (1.3 MB) every frame, so Draw
+	// shows the two split at the wipe instead, and the copy is made once when the wipe is done (below).
 
 	m_unk0x2d8 -= 0.015;
 	if (m_unk0x2d8 < 0.0)
@@ -869,6 +869,9 @@ void Board::UpdateLevelTransition()
 	m_unk0x2c8 += 3;
 	if (m_unk0x2c8 > mHeight)
 	{
+		Graphics g(m_unk0x280);
+		g.DrawImage(m_unk0x284, 0, 0);
+
 		m_unk0x60 = m_unk0x5c + 1;
 		m_unk0x2d4 = 200;
 		FillBoard();
@@ -1282,7 +1285,19 @@ void Board::Draw(Graphics* g)
 	int aCenterY;
 	GetBoardCenter(&aCenterX, &aCenterY);
 
-	g->DrawImage(m_unk0x280, 0, 0);
+	if (mState == 8)
+	{
+		// 3DS port: during the level transition the new background is shown above the wipe and the old one below it
+		// (see UpdateLevelTransition).
+		Graphics aNewG(*g);
+		aNewG.ClipRect(0, 0, mWidth, m_unk0x2c8);
+		aNewG.DrawImage(m_unk0x284, 0, 0);
+		Graphics anOldG(*g);
+		anOldG.ClipRect(0, m_unk0x2c8, mWidth, mHeight - m_unk0x2c8);
+		anOldG.DrawImage(m_unk0x280, 0, 0);
+	}
+	else
+		g->DrawImage(m_unk0x280, 0, 0);
 
 	if (m_unk0x2d8 > 0.0)
 	{

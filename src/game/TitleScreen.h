@@ -25,6 +25,7 @@ public:
 
 	virtual void AddedToManager(WidgetManager* theWidgetManager);
 	virtual void RemovedFromManager(WidgetManager* theWidgetManager);
+	void SetTopScreenArt();	// 3DS
 	virtual void Draw(Graphics* g);
 	virtual void Update();
 	virtual void ButtonDepress(int theId);

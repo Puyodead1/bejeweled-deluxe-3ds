@@ -5,8 +5,8 @@ libctru + citro3d), ported from the [Bejeweled Deluxe decomp](https://github.com
 of the Switch port (`bejeweled-deluxe-nx`), whose history this repository continues. The plan is `3DS_PORT.md` in the
 decomp repository.
 
-**Status: phase 5 (GPU renderer).** `bejeweled.3dsx` builds and runs in Azahar: title screen, loading, a game
-played by touch, with NDSP audio running (not yet checked by ear). The screen is drawn by the GPU with citro3d:
+**Status: phase 6 (saves and system).** `bejeweled.3dsx` builds and runs in Azahar: title screen, loading, a game
+played by touch, saving and continuing, with NDSP audio running (not yet checked by ear). The screen is drawn by the GPU with citro3d:
 about 1–1.5 ms of drawing and 0.5 ms of presenting per frame in Azahar, so the frame rate is whatever the game
 redraws (25 fps on the title screen, 50–60 in play). The phase 3 software renderer is still there for comparison
 and draws at about 5 fps (140–190 ms per frame). Not yet tried on a console.
@@ -42,6 +42,21 @@ draw calls, vertices, texture uploads and texture memory, and how often the game
 | START | quit (the game in progress is saved) |
 
 Touch is the only pointer; there is no cursor.
+
+## Saves and the system
+
+Everything lives in `sdmc:/3ds/Bejeweled/`: settings (`registry.dat`), high scores, the game in progress
+(`userdata/savegame.dat`), screenshots and the log. Files are written to a `.tmp` and then moved into place, and an
+interrupted move is finished (or an unfinished write dropped) at the next start, so a crash or a pulled SD card
+leaves the previous save rather than a broken one.
+
+- **Quitting** (START, Quit Game, or Close from the HOME menu, or the power button) saves the game in progress, as
+  on the PC; the next start asks whether to continue it.
+- **HOME menu and sleep** pause the game and mute it. Before the app is suspended the settings and the game in
+  progress are saved, in case the console is switched off from the HOME menu or its battery runs out while asleep.
+  That save is dropped again on return, so a game that later ends isn't offered to continue.
+- **High score names** are typed on the system keyboard; **fatal errors** show the system error screen.
+- On a New 3DS the game runs at 804 MHz and loads its data on the extra core.
 
 ## Layout
 

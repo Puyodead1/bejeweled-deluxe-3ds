@@ -600,6 +600,10 @@ public:
 	virtual bool			GetAutoInputMove(int& theX1, int& theY1, int& theX2, int& theY2) { return false; }
 	// Script commands the framework doesn't know, for the game to handle (testing).
 	virtual void			AutoInputCommand(const std::string& theCommand, const char* theArgs) {}
+	// 3DS: the HOME menu, sleep or a library applet is about to suspend the app (see CtrPlatform::SetSuspendHandler),
+	// and maybe never resume it; save what quitting would. ResumedFromSuspend runs once it's back.
+	virtual void			SaveForSuspend();
+	virtual void			ResumedFromSuspend();
 
 public:
 	// 3DS buttons, as bit numbers of libctru's KEY_* masks.

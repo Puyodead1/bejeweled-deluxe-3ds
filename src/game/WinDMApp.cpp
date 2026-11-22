@@ -123,6 +123,33 @@ void WinDMApp::LostFocus()
 		mBoard->Pause(mTimeTrial);
 }
 
+// 3DS port: the HOME menu or sleep may be the last thing that happens (the console switched off from there, or its
+// battery running out), so the game in progress is saved as quitting would save it. On the way back the save is
+// dropped again, as loading it at startup does, so a game that later ends isn't offered to continue. A saved game
+// that hasn't been loaded yet (the "continue?" dialog is up) is left alone.
+static bool gSuspendSaved = false;
+
+void WinDMApp::SaveForSuspend()
+{
+	SexyApp::SaveForSuspend();
+	if (!mShutdown && mBoard != NULL && mBoard->CanPlay() && !mBoard->HasSavedGame())
+	{
+		gSuspendSaved = mBoard->SaveGame();
+		fprintf(stderr, "suspend: game %s\n", gSuspendSaved ? "saved" : "not saved");
+	}
+}
+
+void WinDMApp::ResumedFromSuspend()
+{
+	SexyApp::ResumedFromSuspend();
+	if (gSuspendSaved)
+	{
+		gSuspendSaved = false;
+		if (mBoard != NULL)
+			mBoard->DeleteSavedGame();
+	}
+}
+
 // Switch port: the move the board would hint, as gem centres, for scripted test input.
 bool WinDMApp::GetAutoInputMove(int& theX1, int& theY1, int& theX2, int& theY2)
 {

@@ -18,12 +18,21 @@ namespace CtrPlatform
 	};
 	int			TakeAppletEvents();
 	bool		IsInFocus();
-	// For scripted tests: report a focus change as if the system had sent one.
+	// For scripted tests: report a focus change as if the system had sent one (losing focus also runs the suspend
+	// handler), or a close request.
 	void		SimulateFocus(bool inFocus);
+	void		SimulateClose();
+
+	// Called from inside PumpSystem, on the main thread, just before the HOME menu, sleep or a library applet (the
+	// keyboard, the error screen) suspends the app. It may be the last code that runs: the console can be switched off
+	// from the HOME menu, or its battery run out while asleep, so this is where to save.
+	void		SetSuspendHandler(void (*theProc)(void*), void* theArg);
 
 	// Runs the system's event handling (aptMainLoop). Returns false once the system wants the app to close (HOME
-	// menu "Close", or power off); the game should then shut down normally.
+	// menu "Close", or power off); the game should then shut down normally, without drawing (the GPU may no longer
+	// be ours).
 	bool		PumpSystem();
+	bool		IsClosing();	// PumpSystem has returned false
 
 	bool		IsNew3DS();
 

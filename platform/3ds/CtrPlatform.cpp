@@ -28,6 +28,19 @@ static u32* gSocBuffer = NULL;
 static aptHookCookie gAptHookCookie;
 static int gAppletEvents = 0;
 static bool gInFocus = true;
+static bool gClosing = false;
+static void (*gSuspendProc)(void*) = NULL;
+static void* gSuspendArg = NULL;
+
+static void LoseFocus()
+{
+	if (!gInFocus)
+		return;
+	gInFocus = false;
+	gAppletEvents |= CtrPlatform::APPLET_FOCUS_CHANGED;
+	if (gSuspendProc != NULL)
+		gSuspendProc(gSuspendArg);
+}
 
 // Runs on the main thread, inside aptMainLoop.
 static void AptHook(APT_HookType theHook, void* theParam)
@@ -37,11 +50,7 @@ static void AptHook(APT_HookType theHook, void* theParam)
 	case APTHOOK_ONSUSPEND:
 	case APTHOOK_ONSLEEP:
 		fprintf(stderr, "applet: %s\n", theHook == APTHOOK_ONSLEEP ? "sleep" : "suspended");
-		if (gInFocus)
-		{
-			gInFocus = false;
-			gAppletEvents |= CtrPlatform::APPLET_FOCUS_CHANGED;
-		}
+		LoseFocus();
 		break;
 	case APTHOOK_ONRESTORE:
 	case APTHOOK_ONWAKEUP:
@@ -75,18 +84,36 @@ bool CtrPlatform::IsInFocus()
 
 void CtrPlatform::SimulateFocus(bool inFocus)
 {
-	if (inFocus != gInFocus)
+	if (!inFocus)
+		LoseFocus();
+	else if (!gInFocus)
 	{
-		gInFocus = inFocus;
-		gAppletEvents |= APPLET_FOCUS_CHANGED;
-		if (inFocus)
-			gAppletEvents |= APPLET_RESUMED;
+		gInFocus = true;
+		gAppletEvents |= APPLET_FOCUS_CHANGED | APPLET_RESUMED;
 	}
+}
+
+void CtrPlatform::SimulateClose()
+{
+	gClosing = true;
+}
+
+void CtrPlatform::SetSuspendHandler(void (*theProc)(void*), void* theArg)
+{
+	gSuspendProc = theProc;
+	gSuspendArg = theArg;
 }
 
 bool CtrPlatform::PumpSystem()
 {
-	return aptMainLoop();
+	if (!aptMainLoop())
+		gClosing = true;
+	return !gClosing;
+}
+
+bool CtrPlatform::IsClosing()
+{
+	return gClosing;
 }
 
 bool CtrPlatform::IsNew3DS()

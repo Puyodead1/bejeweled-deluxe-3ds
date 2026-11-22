@@ -335,9 +335,13 @@ void C3DInterface::Cleanup(bool recoverBits)
 		s->mInFrame = false;
 	}
 	// Wait for the GPU to be done with everything; after this no texture is in use. (Render targets can only be
-	// deleted outside a frame, so this one ends at once.)
-	C3D_FrameBegin(0);
-	C3D_FrameEnd(0);
+	// deleted outside a frame, so this one ends at once.) Not once the system has asked us to close: the GPU may no
+	// longer be ours, and citro3d already waited for it when the app was suspended.
+	if (!CtrPlatform::IsClosing())
+	{
+		C3D_FrameBegin(0);
+		C3D_FrameEnd(0);
+	}
 	s->mFrameNum++;
 	s->mCurTex = NULL;
 	s->mStateValid = false;
@@ -366,6 +370,12 @@ void C3DInterface::Cleanup(bool recoverBits)
 	delete s;
 	mState = NULL;
 	mTransformStack.clear();
+}
+
+void C3DInterface::InvalidateTarget()
+{
+	if (mState != NULL)
+		mState->mNeedClear = true;
 }
 
 ///////////////////////////////////////////////////////////////////////////////

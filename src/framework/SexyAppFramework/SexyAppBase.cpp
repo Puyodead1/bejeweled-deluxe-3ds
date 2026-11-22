@@ -2204,6 +2204,14 @@ bool SexyAppBase::DrawDirtyStuff()
 	SEXY_AUTO_PERF("SexyAppBase::DrawDirtyStuff");
 	MTAutoDisallowRand aDisallowRand;
 
+	// 3DS: once the system has asked us to close, the GPU may not be ours any more; draw nothing.
+	if (CtrPlatform::IsClosing())
+	{
+		mHasPendingDraw = false;
+		mLastDrawWasEmpty = true;
+		return false;
+	}
+
 	if (gIsFailing) // just try to reinit
 	{
 		Redraw(NULL);
@@ -2519,7 +2527,10 @@ void SexyAppBase::ProcessInput()
 		if (anAppletEvents & CtrPlatform::APPLET_FOCUS_CHANGED)
 			SetAppActive(CtrPlatform::IsInFocus());
 		if (anAppletEvents & CtrPlatform::APPLET_RESUMED)
+		{
 			ClearUpdateBacklog();
+			ResumedFromSuspend();
+		}
 	}
 
 	// Stand-in for the 10 ms SetTimer the window used to get.
@@ -2530,6 +2541,34 @@ void SexyAppBase::ProcessInput()
 		aLastTimerPush = aTimeNow;
 		PushMessage(WM_TIMER, 100, 0);
 	}
+}
+
+static void SuspendHandler(void* theApp)
+{
+	((SexyAppBase*)theApp)->SaveForSuspend();
+}
+
+// The HOME menu, sleep or a library applet is about to suspend us: save the settings, as quitting would.
+void SexyAppBase::SaveForSuspend()
+{
+	if (mShutdown || !mLoaded)
+		return;
+	fprintf(stderr, "suspend: saving\n");
+	if (mReadFromRegistry)
+	{
+		CtrRegistry::Batch aBatch;
+		WriteToRegistry();
+	}
+}
+
+// Back from the HOME menu or sleep. The HOME menu may have used the VRAM the GPU renderer's frame lives in, so the
+// whole screen is drawn again.
+void SexyAppBase::ResumedFromSuspend()
+{
+	if (mDDInterface != NULL)
+		mDDInterface->Restored();
+	if (mWidgetManager != NULL)
+		mWidgetManager->MarkAllDirty();
 }
 
 // The window gained or lost focus (WM_ACTIVATEAPP on the PC); RehupFocus then pauses/mutes or resumes.
@@ -2755,6 +2794,10 @@ void SexyAppBase::ProcessAutoInput()
 		}
 		else if (aCommand == "focus")
 			CtrPlatform::SimulateFocus(a1 != 0);
+		else if (aCommand == "close")
+			CtrPlatform::SimulateClose();
+		else if (aCommand == "popup")
+			Popup(std::string(anArgs));	// the error screen
 		else if (aCommand == "rec")
 		{
 			CtrSoundManager* aSoundManager = dynamic_cast<CtrSoundManager*>(mSoundManager);
@@ -4699,6 +4742,7 @@ void SexyAppBase::Init()
 	// Saves, screenshots and demos go on the SD card.
 	SetAppDataFolder("sdmc:/3ds/Bejeweled/");
 	MkDir(GetAppDataFolder());
+	CtrPlatform::SetSuspendHandler(SuspendHandler, this);
 	if (mDemoFileName.find(':') == std::string::npos)
 		mDemoFileName = GetAppDataFolder() + mDemoFileName;
 

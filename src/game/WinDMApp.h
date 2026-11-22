@@ -52,6 +52,8 @@ public:
 	virtual bool GetAutoInputMove(int& theX1, int& theY1, int& theX2, int& theY2); // Switch port: scripted testing
 	virtual void AutoInputCommand(const std::string& theCommand, const char* theArgs); // Switch port: testing
 	virtual bool ControllerButton(int theButton); // console port: button shortcuts
+	virtual void SaveForSuspend();      // 3DS port: HOME menu / sleep
+	virtual void ResumedFromSuspend();  // 3DS port
 	void SetConsoleStrings();         // console port: console wording over the PC strings
 
 	// Names below are guesses from what the code does.

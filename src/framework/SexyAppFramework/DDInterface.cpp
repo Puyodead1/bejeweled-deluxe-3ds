@@ -367,6 +367,13 @@ void DDInterface::SetFocusPoint(int theX, int theY)
 	}
 }
 
+void DDInterface::Restored()
+{
+	mViewDirty = true;
+	if (mC3DInterface != NULL)
+		mC3DInterface->InvalidateTarget();
+}
+
 // The texture combiner. The frame's pixels are 0xAARRGGBB words; the GPU reads an RGBA8 texel as 0xRRGGBBAA, so it
 // sees R = alpha, G = red, B = green, A = blue. Three stages put red, green and blue back where they belong:
 //   (G, 0, 0), + (0, B, 0), + (0, 0, A); alpha is 1.

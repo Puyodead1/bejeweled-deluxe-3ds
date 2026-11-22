@@ -80,6 +80,7 @@ public:
 	void					RemoveMemoryImage(MemoryImage* theImage);
 	bool					RecoverBits(MemoryImage* theImage);
 	bool					ReadTarget(uint32_t* theBits);		// the frame as ARGB, mWidth x mHeight
+	void					InvalidateTarget();		// clear the frame to black when the next one starts
 	std::string				TakeStats();
 
 	void					Blt(Image* theImage, float theX, float theY, const Rect& theSrcRect, const Color& theColor, int theDrawMode, bool linearFilter = false);

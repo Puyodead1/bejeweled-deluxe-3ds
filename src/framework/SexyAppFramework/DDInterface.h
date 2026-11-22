@@ -109,6 +109,10 @@ public:
 
 	void					SetMagnifier(bool on);
 	void					SetFocusPoint(int theX, int theY);
+
+	// Back from the HOME menu or sleep: the GPU renderer's frame may have been overwritten, so it starts again from
+	// black (the caller marks every widget dirty).
+	void					Restored();
 };
 
 }

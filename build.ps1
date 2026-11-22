@@ -1,10 +1,10 @@
-# Build the Switch .nro through the devkitPro msys2 shell (devkitPro's CMake support refuses Windows-native CMake).
+# Build the 3DS .3dsx files through the devkitPro msys2 shell (devkitPro's CMake support refuses Windows-native CMake).
 # Usage: .\build.ps1 [-Debug] [-Clean] [-Target name] [-KeepGoing]
 #   -Debug      unoptimised build with debug info, into build-debug\
 #   -Clean      rebuild everything
-#   -Target     build one CMake target (e.g. sexyframework) instead of all
+#   -Target     build one CMake target (e.g. smoke_3dsx) instead of all
 #   -KeepGoing  don't stop at the first failing file (make -k), to see every error at once
-# Output: build\*.nro (or build-debug\*.nro). Run tools\pack_data.ps1 once first to fill romfs\.
+# Output: build\*.3dsx (or build-debug\*.3dsx). Run tools\pack_data.ps1 once first to fill romfs\.
 param([switch]$Debug, [switch]$Clean, [string]$Target = '', [switch]$KeepGoing)
 $ErrorActionPreference = 'Stop'
 $dkp = if ($env:DEVKITPRO_WIN) { $env:DEVKITPRO_WIN } else { 'C:\devkitPro' }
@@ -23,10 +23,10 @@ $makeArg = if ($KeepGoing) { '-- -k' } else { '' }
 
 $script = @"
 set -e
-export DEVKITPRO=/opt/devkitpro DEVKITA64=/opt/devkitpro/devkitA64
-export PATH=/opt/devkitpro/tools/bin:/opt/devkitpro/devkitA64/bin:/usr/bin:`$PATH
+export DEVKITPRO=/opt/devkitpro DEVKITARM=/opt/devkitpro/devkitARM
+export PATH=/opt/devkitpro/tools/bin:/opt/devkitpro/devkitARM/bin:/usr/bin:`$PATH
 cd '$root'
-cmake -S . -B $dir -G 'Unix Makefiles' -DCMAKE_TOOLCHAIN_FILE=`$DEVKITPRO/cmake/Switch.cmake -DCMAKE_BUILD_TYPE=$type > /dev/null
+cmake -S . -B $dir -G 'Unix Makefiles' -DCMAKE_TOOLCHAIN_FILE=`$DEVKITPRO/cmake/3DS.cmake -DCMAKE_BUILD_TYPE=$type > /dev/null
 cmake --build $dir $cleanArg $targetArg -j$jobs $makeArg
 "@
 # Native tools write warnings to stderr; under 'Stop' PowerShell 5.1 would treat those as fatal.

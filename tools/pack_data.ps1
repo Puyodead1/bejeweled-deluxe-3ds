@@ -1,7 +1,7 @@
-# Copy the game's data files from an installed Bejeweled Deluxe 1.87 into romfs/, which the build packs into the .nro.
+# Copy the game's data files from an installed Bejeweled Deluxe 1.87 into romfs/, which the build packs into the .3dsx.
 # Usage: .\tools\pack_data.ps1 [-GameDir <path>]
 #
-# The Switch file system is case-sensitive and the game's paths aren't consistent ("music\1980-autonomus.s3m" vs the
+# RomFS is case-sensitive and the game's paths aren't consistent ("music\1980-autonomus.s3m" vs the
 # file 1980-Autonomus.s3m, dialogbox2.PNG), so every path is stored in lowercase; the file layer lowercases paths too.
 # Only what the game reads is copied: the PopCap DRM wrapper (drm\, drm.*, Flash.ocx), bass.dll and the exes stay out.
 param([string]$GameDir = 'J:\SteamLibrary\steamapps\common\Bejeweled Deluxe')

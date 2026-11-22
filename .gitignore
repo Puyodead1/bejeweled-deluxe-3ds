@@ -2,7 +2,7 @@
 /build-debug/
 # Game data copied from an installed copy by tools/pack_data.ps1; not redistributable.
 /romfs/
-/res/icon256.png
-*.nro
+*.3dsx
+*.smdh
 *.elf
-*.nacp
+*.shbin

@@ -1,12 +1,12 @@
 cmake_minimum_required(VERSION 3.20)
 
-# Bejeweled Deluxe 1.87 for Nintendo Switch (homebrew .nro).
+# Bejeweled Deluxe 1.87 for Nintendo 3DS (homebrew .3dsx).
 # Configure with the devkitPro toolchain from the devkitPro msys2 shell; build.ps1 does that for you:
-#   cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=$DEVKITPRO/cmake/Switch.cmake
-project(Bejeweled VERSION 1.87.0 LANGUAGES C CXX)
+#   cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=$DEVKITPRO/cmake/3DS.cmake
+project(Bejeweled VERSION 1.87.0 LANGUAGES C CXX ASM)
 
-if(NOT NINTENDO_SWITCH)
-    message(FATAL_ERROR "Configure with -DCMAKE_TOOLCHAIN_FILE=$DEVKITPRO/cmake/Switch.cmake (see build.ps1)")
+if(NOT NINTENDO_3DS)
+    message(FATAL_ERROR "Configure with -DCMAKE_TOOLCHAIN_FILE=$DEVKITPRO/cmake/3DS.cmake (see build.ps1)")
 endif()
 
 if(NOT CMAKE_BUILD_TYPE)
@@ -17,67 +17,55 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-set(PORTLIBS ${DEVKITPRO}/portlibs/switch)
+include(dkp-embedded-binary)
 
-# SDL2 and libmodplug from dkp-pacman (switch-sdl2, switch-libmodplug). Their pkg-config files work too, but the
-# link line is short and fixed, so it is spelled out here.
-add_library(nx_sdl2 INTERFACE)
-target_include_directories(nx_sdl2 INTERFACE ${PORTLIBS}/include ${PORTLIBS}/include/SDL2)
-target_link_directories(nx_sdl2 INTERFACE ${PORTLIBS}/lib)
-target_link_libraries(nx_sdl2 INTERFACE SDL2 EGL glapi drm_nouveau nx)
+set(PORTLIBS ${DEVKITPRO}/portlibs/3ds)
 
-add_library(nx_modplug INTERFACE)
-target_include_directories(nx_modplug INTERFACE ${PORTLIBS}/include)
-target_link_directories(nx_modplug INTERFACE ${PORTLIBS}/lib)
-target_link_libraries(nx_modplug INTERFACE modplug stdc++ m)
+# citro3d (installed with the 3DS toolchain). libctru and libm come from the toolchain's standard libraries.
+add_library(ctr_citro3d INTERFACE)
+target_link_libraries(ctr_citro3d INTERFACE citro3d)
 
-# Image and Ogg codecs, also from dkp-pacman (switch-libpng, switch-libjpeg-turbo, switch-zlib, switch-libvorbisidec,
-# switch-libogg). They replace the 1999-era copies the Windows game shipped with.
-add_library(nx_codecs INTERFACE)
-target_include_directories(nx_codecs INTERFACE ${PORTLIBS}/include)
-target_link_directories(nx_codecs INTERFACE ${PORTLIBS}/lib)
-target_link_libraries(nx_codecs INTERFACE png jpeg vorbisidec ogg z)
+# libmodplug for the .s3m music (3ds-libmodplug).
+add_library(ctr_modplug INTERFACE)
+target_include_directories(ctr_modplug INTERFACE ${PORTLIBS}/include)
+target_link_directories(ctr_modplug INTERFACE ${PORTLIBS}/lib)
+target_link_libraries(ctr_modplug INTERFACE modplug stdc++ m)
 
-# Old MSVC code: char is signed there, and a few pre-standard constructs only get warnings with -fpermissive.
-set(SEXY_CXX_FLAGS -fsigned-char -fpermissive -fno-strict-aliasing -Wno-write-strings -Wno-narrowing
-    -Wno-unused-result -Wno-deprecated-declarations -Wno-multichar)
+# Image and Ogg codecs (3ds-libpng, 3ds-libjpeg-turbo, 3ds-zlib, 3ds-libvorbisidec, 3ds-libogg).
+add_library(ctr_codecs INTERFACE)
+target_include_directories(ctr_codecs INTERFACE ${PORTLIBS}/include)
+target_link_directories(ctr_codecs INTERFACE ${PORTLIBS}/lib)
+target_link_libraries(ctr_codecs INTERFACE png jpeg vorbisidec ogg z m)
 
-# --- SexyAppFramework + ImageLib + PakLib ------------------------------------------------------------
-set(SEXY_DIR ${CMAKE_SOURCE_DIR}/src/framework/SexyAppFramework)
-file(GLOB SEXY_SOURCES CONFIGURE_DEPENDS ${SEXY_DIR}/*.cpp)
-# SWTri_*.cpp are #included by SWTri.cpp; they aren't translation units.
-list(FILTER SEXY_SOURCES EXCLUDE REGEX "/SWTri_[^/]*\\.cpp$")
-file(GLOB PLATFORM_SOURCES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/platform/switch/*.cpp)
-
-add_library(sexyframework STATIC
-    ${SEXY_SOURCES}
-    ${PLATFORM_SOURCES}
-    src/framework/ImageLib/ImageLib.cpp
-    src/framework/PakLib/PakInterface.cpp
-)
-target_include_directories(sexyframework PUBLIC
-    ${CMAKE_SOURCE_DIR}/platform/switch
-    ${CMAKE_SOURCE_DIR}/src/framework
-    ${SEXY_DIR}
-)
-target_compile_options(sexyframework PUBLIC $<$<COMPILE_LANGUAGE:CXX>:${SEXY_CXX_FLAGS}>)
-target_link_libraries(sexyframework PUBLIC nx_codecs nx_modplug nx_sdl2)
-
-# --- The game ----------------------------------------------------------------------------------------
-file(GLOB GAME_SOURCES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/src/game/*.cpp)
-add_executable(bejeweled ${GAME_SOURCES})
-target_include_directories(bejeweled PRIVATE ${CMAKE_SOURCE_DIR}/src/game)
-target_link_libraries(bejeweled PRIVATE sexyframework)
+# The sprite shader: pixel positions -> clip space, texture coordinate and vertex colour passed through.
+# (ctr_add_shader_library only takes its sources as plain arguments, not after a SOURCES keyword.)
+ctr_add_shader_library(sprite_shader ${CMAKE_SOURCE_DIR}/platform/3ds/shaders/sprite.v.pica)
+dkp_add_embedded_binary_library(sprite_shader_bin sprite_shader)
 
 set(ROMFS_DIR ${CMAKE_SOURCE_DIR}/romfs)
 if(NOT IS_DIRECTORY ${ROMFS_DIR})
     message(FATAL_ERROR "romfs/ is missing: run tools/pack_data.ps1 to copy the game data in")
 endif()
 
-nx_generate_nacp(bejeweled.nacp NAME "Bejeweled Deluxe" AUTHOR "PopCap Games" VERSION "${PROJECT_VERSION}")
-nx_create_nro(bejeweled
-    OUTPUT ${CMAKE_BINARY_DIR}/bejeweled.nro
-    ICON ${CMAKE_SOURCE_DIR}/res/icon.jpg
-    NACP ${CMAKE_BINARY_DIR}/bejeweled.nacp
+# --- Phase 1 smoke test --------------------------------------------------------------------------------
+# Checks the toolchain and every system service the port needs: citro3d (render to a 640x480 texture, present it to
+# both screens), RomFS, libjpeg/libpng, NDSP with libmodplug and Tremor, touch and buttons, SD card writes.
+add_executable(smoke platform/3ds/smoke/smoke.cpp)
+target_compile_options(smoke PRIVATE -Wall -Wno-unused-function)
+target_link_libraries(smoke PRIVATE sprite_shader_bin ctr_citro3d ctr_codecs ctr_modplug)
+
+ctr_generate_smdh(smoke.smdh
+    NAME "Bejeweled smoke test"
+    DESCRIPTION "3DS port bring-up check"
+    AUTHOR "PopCap Games"
+    ICON ${CMAKE_SOURCE_DIR}/res/icon48.png
+)
+ctr_create_3dsx(smoke
+    OUTPUT ${CMAKE_BINARY_DIR}/smoke.3dsx
+    SMDH ${CMAKE_BINARY_DIR}/smoke.smdh
     ROMFS ${ROMFS_DIR}
 )
+
+# --- The game (phase 2) --------------------------------------------------------------------------------
+# src/framework and src/game come from the Switch port unchanged so far; they are built from phase 2 on, once
+# platform/3ds replaces the Switch port's SDL2 and libnx code.

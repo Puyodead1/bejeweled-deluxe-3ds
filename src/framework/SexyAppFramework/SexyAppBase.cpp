@@ -14,6 +14,7 @@
 #include "KeyCodes.h"
 #include "DDInterface.h"
 #include "DDImage.h"
+#include "C3DInterface.h"
 #include "MemoryImage.h"
 #include "Dialog.h"
 #include "DialogButton.h"
@@ -2028,13 +2029,18 @@ void SexyAppBase::Redraw(Rect* theClipRect)
 }
 
 ///////////////////////////// FPS Stuff
+// Loop diagnostics for the perf log: DrawDirtyStuff calls and how many found something dirty; time in updates and sleeps.
+static int gDirtyCalls = 0, gDirtyDrew = 0;
+static uint64_t gUpdateUs = 0, gSleepUs = 0;
+
 static PerfTimer gFPSTimer;
 static int gFrameCount;
 static int gFPSDisplay;
 static bool gForceDisplay = false;
 // Switch port: frame timing, logged every 10 s. Per shown frame: drawing the widgets into the 640x480 image
 // (software), and Redraw (texture upload + present, which waits for vsync); plus the longest gap between two presents
-// and the game updates run (100 a second when keeping up).
+// and the game updates run (100 a second when keeping up). With the GPU renderer a second line has its counters, and a
+// third says how often DrawDirtyStuff found something to redraw and how long updates and sleeps took.
 void SexyAppBase::NoteFrameTimes(uint64_t theDrawUs, uint64_t thePresentStartUs, uint64_t thePresentEndUs)
 {
 	static uint64_t aPeriodStartUs = 0, aLastPresentEndUs = 0;
@@ -2061,6 +2067,12 @@ void SexyAppBase::NoteFrameTimes(uint64_t theDrawUs, uint64_t thePresentStartUs,
 		fprintf(stderr, "perf: %.1f fps, draw %.2f ms, present %.2f ms, longest frame %.1f ms, %.0f updates/s\n",
 			aFrames * 1e6 / aPeriodUs, aDrawUs / 1000.0 / aFrames, aPresentUs / 1000.0 / aFrames, aMaxGapUs / 1000.0,
 			(mUpdateCount - aStartUpdateCount) * 1e6 / aPeriodUs);
+		if (mDDInterface->mC3DInterface != NULL)
+			fprintf(stderr, "perf: %s\n", mDDInterface->mC3DInterface->TakeStats().c_str());
+		fprintf(stderr, "perf: loop %d dirty checks (%d drew), updates %.0f ms/s, sleep %.0f ms/s\n",
+			gDirtyCalls, gDirtyDrew, gUpdateUs / 1000.0 / (aPeriodUs / 1e6), gSleepUs / 1000.0 / (aPeriodUs / 1e6));
+		gDirtyCalls = gDirtyDrew = 0;
+		gUpdateUs = gSleepUs = 0;
 		aPeriodStartUs = thePresentEndUs;
 		aDrawUs = aPresentUs = aMaxGapUs = 0;
 		aFrames = 0;
@@ -2236,6 +2248,9 @@ bool SexyAppBase::DrawDirtyStuff()
 	mIsDrawing = true;
 	bool drewScreen = mWidgetManager->DrawScreen();
 	mIsDrawing = false;
+	gDirtyCalls++;
+	if (drewScreen)
+		gDirtyDrew++;
 	uint64_t aDrawEndUs = CtrPlatform::MicroTime();
 
 	if ((drewScreen || (aStartTime - mLastDrawTick >= 1000) || (mCustomCursorDirty) || mDDInterface->mViewDirty) &&
@@ -2731,6 +2746,13 @@ void SexyAppBase::ProcessAutoInput()
 		}
 		else if (aCommand == "shot")
 			TakeScreenshot();
+		else if (aCommand == "renderer")
+		{
+			// renderer gpu|sw: switch renderers, as Shift+F8 did on Windows.
+			bool aWant3D = strstr(anArgs, "sw") == NULL;
+			fprintf(stderr, "autoinput: %s renderer\n", aWant3D ? "GPU" : "software");
+			Set3DAcclerated(aWant3D);
+		}
 		else if (aCommand == "focus")
 			CtrPlatform::SimulateFocus(a1 != 0);
 		else if (aCommand == "rec")
@@ -3968,7 +3990,9 @@ bool SexyAppBase::Process(bool allowSleep)
 						}
 					}
 
+					uint64_t aUpdStartUs = CtrPlatform::MicroTime();
 					bool hadRealUpdate = DoUpdateFrames();
+					gUpdateUs += CtrPlatform::MicroTime() - aUpdStartUs;
 					if (hadRealUpdate)
 						mUpdateAppState = UPDATESTATE_PROCESS_2;
 
@@ -4003,7 +4027,9 @@ bool SexyAppBase::Process(bool allowSleep)
 			}
 
 			//aNumCalls++;
+			uint64_t aUpdFStartUs = CtrPlatform::MicroTime();
 			DoUpdateFramesF((float) anUpdatesPerUpdateF);
+			gUpdateUs += CtrPlatform::MicroTime() - aUpdFStartUs;
 			ProcessSafeDeleteList();
 
 			// Don't let mUpdateFTimeAcc dip below 0
@@ -4043,7 +4069,9 @@ bool SexyAppBase::Process(bool allowSleep)
 
 					// Wait till next processing cycle
 					++mSleepCount;
+					uint64_t aSleepStartUs = CtrPlatform::MicroTime();
 					Sleep(aTimeToNextFrame);
+					gSleepUs += CtrPlatform::MicroTime() - aSleepStartUs;
 
 					aCumSleepTime += aTimeToNextFrame;
 				}
@@ -5388,13 +5416,13 @@ bool SexyAppBase::Is3DAccelerated()
 // FUNCTION: GAME187 0x44ff40
 bool SexyAppBase::Is3DAccelerationSupported()
 {
-	return false;
+	return true;
 }
 
 // FUNCTION: GAME187 0x44ff60
 bool SexyAppBase::Is3DAccelerationRecommended()
 {
-	return false;
+	return true;
 }
 
 // FUNCTION: GAME187 0x44ff90

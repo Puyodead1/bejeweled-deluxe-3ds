@@ -1,7 +1,10 @@
 #include "DDInterface.h"
 #include "DDImage.h"
+#include "C3DInterface.h"
 #include "SexyAppBase.h"
 #include "AutoCrit.h"
+
+#include <unistd.h>
 
 #include <3ds.h>
 #include <citro3d.h>
@@ -44,10 +47,19 @@ struct CtrVideo
 
 static bool gC3DUp = false;
 
+// citro3d's command buffer. The GPU renderer issues a draw call per texture/blend change, and a frame with a lot of
+// text or gems changes often; C3DInterface splits the frame if it fills up anyway.
+static const int CMDBUF_SIZE = 0x80000;
+
+// Its presence selects the software renderer at startup (the GPU one is the default).
+static const char* SOFTWARE_RENDERER_FLAG = "sdmc:/3ds/Bejeweled/software-renderer";
+
 DDInterface::DDInterface(SexyAppBase* theApp)
 {
 	mApp = theApp;
-	mIs3D = false;
+	mIs3D = access(SOFTWARE_RENDERER_FLAG, F_OK) != 0;
+	mC3DInterface = NULL;
+	mShuttingDown = false;
 	mInRedraw = false;
 	mWidth = theApp->mWidth;
 	mHeight = theApp->mHeight;
@@ -85,6 +97,7 @@ DDInterface::DDInterface(SexyAppBase* theApp)
 
 DDInterface::~DDInterface()
 {
+	mShuttingDown = true;
 	Cleanup();
 	if (gC3DUp)
 	{
@@ -115,7 +128,15 @@ void DDInterface::Cleanup()
 
 	mInitialized = false;
 
-	if (mScreenImage != NULL && mScreenImage->mBits == mLinearBits)
+	// The GPU renderer first: switching renderers, images whose bits were purged get them back from their textures.
+	if (mC3DInterface != NULL)
+	{
+		mC3DInterface->Cleanup(!mShuttingDown);
+		delete mC3DInterface;
+		mC3DInterface = NULL;
+	}
+
+	if (mScreenImage != NULL && mLinearBits != NULL && mScreenImage->mBits == mLinearBits)
 		mScreenImage->mBits = NULL;		// not MemoryImage's to delete[]
 	delete mScreenImage;
 	mScreenImage = NULL;
@@ -170,7 +191,7 @@ int DDInterface::Init(HWND theWindow, bool IsWindowed)
 
 	if (!gC3DUp)
 	{
-		if (!C3D_Init(C3D_DEFAULT_CMDBUF_SIZE))
+		if (!C3D_Init(CMDBUF_SIZE))
 		{
 			mErrorString = "C3D_Init failed";
 			return RESULT_DD_CREATE_FAIL;
@@ -198,31 +219,8 @@ int DDInterface::Init(HWND theWindow, bool IsWindowed)
 	Mtx_OrthoTilt(&v->mTopProj, 0.0f, 400.0f, 240.0f, 0.0f, 1.0f, -1.0f, true);
 	Mtx_OrthoTilt(&v->mBottomProj, 0.0f, 320.0f, 240.0f, 0.0f, 1.0f, -1.0f, true);
 
-	// The frame textures: VRAM if there's room (faster for the GPU to read), else linear memory.
-	for (int i = 0; i < 2; i++)
-	{
-		v->mTexValid[i] = C3D_TexInitVRAM(&v->mTex[i], TEX_WIDTH, TEX_HEIGHT, GPU_RGBA8) ||
-			C3D_TexInit(&v->mTex[i], TEX_WIDTH, TEX_HEIGHT, GPU_RGBA8);
-		if (!v->mTexValid[i])
-		{
-			mErrorString = "can't allocate the frame textures";
-			return RESULT_SURFACE_FAIL;
-		}
-		C3D_TexSetFilter(&v->mTex[i], GPU_LINEAR, GPU_LINEAR);
-		C3D_TexSetWrap(&v->mTex[i], GPU_CLAMP_TO_EDGE, GPU_CLAMP_TO_EDGE);
-	}
-
-	v->mTiled = (uint32_t*)linearAlloc(mWidth * mHeight * 4);
-	mLinearBits = (uint32_t*)linearAlloc((mWidth * mHeight + 1) * 4);
-	v->mVertices = (CtrVertex*)linearAlloc(16 * sizeof(CtrVertex));
-	if (v->mTiled == NULL || mLinearBits == NULL || v->mVertices == NULL)
-	{
-		mErrorString = "out of linear memory";
-		return RESULT_SURFACE_FAIL;
-	}
-
 	// The sprite shader (platform/3ds/shaders/sprite.v.pica): position through the projection, texcoord and colour
-	// passed on.
+	// passed on. The GPU renderer uses it too.
 	v->mShader = DVLB_ParseFile((u32*)sprite_shader_shbin, sprite_shader_shbin_size);
 	if (v->mShader == NULL)
 	{
@@ -233,18 +231,72 @@ int DDInterface::Init(HWND theWindow, bool IsWindowed)
 	shaderProgramSetVsh(&v->mProgram, &v->mShader->DVLE[0]);
 	v->mProjectionLoc = shaderInstanceGetUniformLocation(v->mProgram.vertexShader, "projection");
 
+	v->mVertices = (CtrVertex*)linearAlloc(16 * sizeof(CtrVertex));
+	if (v->mVertices == NULL)
+	{
+		mErrorString = "out of linear memory";
+		return RESULT_SURFACE_FAIL;
+	}
+
 	mPresentationRect = Rect(0, 0, mWidth, mHeight);
 
-	mScreenImage = new DDImage(this);
-	mScreenImage->Create(mWidth, mHeight);
-	// Draw straight into linear memory, so presenting needs no copy by the CPU.
-	delete [] mScreenImage->mBits;
-	mScreenImage->mBits = mLinearBits;
-	mScreenImage->Clear();
+	if (mIs3D)
+	{
+		mC3DInterface = new C3DInterface(this);
+		std::string anError;
+		if (!mC3DInterface->Init(mWidth, mHeight, &v->mProgram, v->mProjectionLoc, anError))
+		{
+			fprintf(stderr, "video: GPU renderer failed (%s); using the software renderer\n", anError.c_str());
+			mC3DInterface->Cleanup(false);
+			delete mC3DInterface;
+			mC3DInterface = NULL;
+			mIs3D = false;
+		}
+	}
 
-	fprintf(stderr, "video: %dx%d frame, textures in %s; %s\n", mWidth, mHeight,
-		(osConvertVirtToPhys(v->mTex[0].data) >= OS_VRAM_PADDR && osConvertVirtToPhys(v->mTex[0].data) < OS_VRAM_PADDR + OS_VRAM_SIZE) ? "VRAM" : "linear memory",
-		vramSpaceFree() >= 0 ? "ok" : "");
+	if (mIs3D)
+	{
+		// The pixels are in the render target; the screen image has no bits of its own (DDImage::GetBits reads the
+		// target back if anything asks).
+		mScreenImage = new DDImage(this);
+		mScreenImage->mWidth = mWidth;
+		mScreenImage->mHeight = mHeight;
+		fprintf(stderr, "video: %dx%d frame, GPU renderer\n", mWidth, mHeight);
+	}
+	else
+	{
+		// The frame textures: VRAM if there's room (faster for the GPU to read), else linear memory.
+		for (int i = 0; i < 2; i++)
+		{
+			v->mTexValid[i] = C3D_TexInitVRAM(&v->mTex[i], TEX_WIDTH, TEX_HEIGHT, GPU_RGBA8) ||
+				C3D_TexInit(&v->mTex[i], TEX_WIDTH, TEX_HEIGHT, GPU_RGBA8);
+			if (!v->mTexValid[i])
+			{
+				mErrorString = "can't allocate the frame textures";
+				return RESULT_SURFACE_FAIL;
+			}
+			C3D_TexSetFilter(&v->mTex[i], GPU_LINEAR, GPU_LINEAR);
+			C3D_TexSetWrap(&v->mTex[i], GPU_CLAMP_TO_EDGE, GPU_CLAMP_TO_EDGE);
+		}
+
+		v->mTiled = (uint32_t*)linearAlloc(mWidth * mHeight * 4);
+		mLinearBits = (uint32_t*)linearAlloc((mWidth * mHeight + 1) * 4);
+		if (v->mTiled == NULL || mLinearBits == NULL)
+		{
+			mErrorString = "out of linear memory";
+			return RESULT_SURFACE_FAIL;
+		}
+
+		mScreenImage = new DDImage(this);
+		mScreenImage->Create(mWidth, mHeight);
+		// Draw straight into linear memory, so presenting needs no copy by the CPU.
+		delete [] mScreenImage->mBits;
+		mScreenImage->mBits = mLinearBits;
+		mScreenImage->Clear();
+
+		fprintf(stderr, "video: %dx%d frame, software renderer, textures in %s\n", mWidth, mHeight,
+			(osConvertVirtToPhys(v->mTex[0].data) >= OS_VRAM_PADDR && osConvertVirtToPhys(v->mTex[0].data) < OS_VRAM_PADDR + OS_VRAM_SIZE) ? "VRAM" : "linear memory");
+	}
 
 	mInitCount++;
 	mInitialized = true;
@@ -276,6 +328,13 @@ void DDInterface::RemoveDDImage(DDImage* theDDImage)
 
 void DDInterface::Remove3DData(MemoryImage* theImage)
 {
+	if (mC3DInterface != NULL)
+		mC3DInterface->RemoveMemoryImage(theImage);
+}
+
+bool DDInterface::RecoverBits(MemoryImage* theImage)
+{
+	return mC3DInterface != NULL && mC3DInterface->RecoverBits(theImage);
 }
 
 void DDInterface::SetVideoOnlyDraw(bool videoOnly)
@@ -365,35 +424,50 @@ bool DDInterface::Redraw(Rect* theClipRect)
 	mInRedraw = true;
 	CtrVideo* v = mVideo;
 
-	uint32_t* aBits = mScreenImage->GetBits();
-	if (aBits != mLinearBits)
+	C3D_Tex* aTex;
+	if (mC3DInterface != NULL)
 	{
-		// Something gave the screen image new pixels; copy them where the DMA engine can see them.
-		static bool aLogged = false;
-		if (!aLogged)
-			fprintf(stderr, "video: screen image bits moved out of linear memory; copying each frame\n");
-		aLogged = true;
-		memcpy(mLinearBits, aBits, mWidth * mHeight * 4);
+		// The GPU drew the frame into its render target; this frame (begun by the first draw, or here if nothing was
+		// drawn) goes on to show it.
+		aTex = (C3D_Tex*)mC3DInterface->FinishScene();
+		if (aTex == NULL)
+		{
+			mInRedraw = false;
+			return false;
+		}
+	}
+	else
+	{
+		uint32_t* aBits = mScreenImage->GetBits();
+		if (aBits != mLinearBits)
+		{
+			// Something gave the screen image new pixels; copy them where the DMA engine can see them.
+			static bool aLogged = false;
+			if (!aLogged)
+				fprintf(stderr, "video: screen image bits moved out of linear memory; copying each frame\n");
+			aLogged = true;
+			memcpy(mLinearBits, aBits, mWidth * mHeight * 4);
+		}
+
+		// 1. The frame into the next texture: the display transfer engine tiles it into mTiled, then a texture copy
+		// puts each 8-row strip of tiles into the wider texture (640 of its 1024 columns).
+		int aTexIdx = v->mNextTex;
+		v->mNextTex ^= 1;
+		aTex = &v->mTex[aTexIdx];
+		GSPGPU_FlushDataCache(mLinearBits, mWidth * mHeight * 4);
+		C3D_SyncDisplayTransfer((u32*)mLinearBits, GX_BUFFER_DIM(mWidth, mHeight), (u32*)v->mTiled, GX_BUFFER_DIM(mWidth, mHeight),
+			GX_TRANSFER_FLIP_VERT(0) | GX_TRANSFER_OUT_TILED(1) | GX_TRANSFER_RAW_COPY(0) |
+			GX_TRANSFER_IN_FORMAT(GX_TRANSFER_FMT_RGBA8) | GX_TRANSFER_OUT_FORMAT(GX_TRANSFER_FMT_RGBA8) |
+			GX_TRANSFER_SCALING(GX_TRANSFER_SCALE_NO));
+		u32 aStripBytes = mWidth * 8 * 4;
+		u32 aGapBytes = (TEX_WIDTH - mWidth) * 8 * 4;
+		C3D_SyncTextureCopy((u32*)v->mTiled, GX_BUFFER_DIM(aStripBytes >> 4, 0), (u32*)aTex->data,
+			GX_BUFFER_DIM(aStripBytes >> 4, aGapBytes >> 4), mWidth * mHeight * 4, GX_TRANSFER_RAW_COPY(1));
+
+		C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
 	}
 
-	// 1. The frame into the next texture: the display transfer engine tiles it into mTiled, then a texture copy puts
-	// each 8-row strip of tiles into the wider texture (640 of its 1024 columns).
-	int aTexIdx = v->mNextTex;
-	v->mNextTex ^= 1;
-	C3D_Tex* aTex = &v->mTex[aTexIdx];
-	GSPGPU_FlushDataCache(mLinearBits, mWidth * mHeight * 4);
-	C3D_SyncDisplayTransfer((u32*)mLinearBits, GX_BUFFER_DIM(mWidth, mHeight), (u32*)v->mTiled, GX_BUFFER_DIM(mWidth, mHeight),
-		GX_TRANSFER_FLIP_VERT(0) | GX_TRANSFER_OUT_TILED(1) | GX_TRANSFER_RAW_COPY(0) |
-		GX_TRANSFER_IN_FORMAT(GX_TRANSFER_FMT_RGBA8) | GX_TRANSFER_OUT_FORMAT(GX_TRANSFER_FMT_RGBA8) |
-		GX_TRANSFER_SCALING(GX_TRANSFER_SCALE_NO));
-	u32 aStripBytes = mWidth * 8 * 4;
-	u32 aGapBytes = (TEX_WIDTH - mWidth) * 8 * 4;
-	C3D_SyncTextureCopy((u32*)v->mTiled, GX_BUFFER_DIM(aStripBytes >> 4, 0), (u32*)aTex->data,
-		GX_BUFFER_DIM(aStripBytes >> 4, aGapBytes >> 4), mWidth * mHeight * 4, GX_TRANSFER_RAW_COPY(1));
-
 	// 2. Both screens.
-	C3D_FrameBegin(C3D_FRAME_SYNCDRAW);
-
 	C3D_BindProgram(&v->mProgram);
 	C3D_AttrInfo* anAttrInfo = C3D_GetAttrInfo();
 	AttrInfo_Init(anAttrInfo);
@@ -407,8 +481,20 @@ bool DDInterface::Redraw(Rect* theClipRect)
 	C3D_CullFace(GPU_CULL_NONE);
 	C3D_AlphaBlend(GPU_BLEND_ADD, GPU_BLEND_ADD, GPU_ONE, GPU_ZERO, GPU_ONE, GPU_ZERO);
 	C3D_TexBind(0, aTex);
-	SetFrameTexEnv();
-
+	if (mC3DInterface != NULL)
+	{
+		// The render target is a native RGBA8 texture: use it as it is.
+		C3D_TexEnv* anEnv = C3D_GetTexEnv(0);
+		C3D_TexEnvInit(anEnv);
+		C3D_TexEnvSrc(anEnv, C3D_RGB, GPU_TEXTURE0, GPU_PRIMARY_COLOR, GPU_PRIMARY_COLOR);
+		C3D_TexEnvFunc(anEnv, C3D_RGB, GPU_REPLACE);
+		C3D_TexEnvSrc(anEnv, C3D_Alpha, GPU_PRIMARY_COLOR, GPU_PRIMARY_COLOR, GPU_PRIMARY_COLOR);
+		C3D_TexEnvFunc(anEnv, C3D_Alpha, GPU_REPLACE);
+		for (int i = 1; i < 6; i++)
+			C3D_TexEnvInit(C3D_GetTexEnv(i));
+	}
+	else
+		SetFrameTexEnv();
 	// Top: the whole picture at half size in the middle, or a full-size window around the last touch.
 	if (mMagnifier)
 	{
@@ -433,6 +519,8 @@ bool DDInterface::Redraw(Rect* theClipRect)
 	C3D_DrawArrays(GPU_TRIANGLES, 6, 6);
 
 	C3D_FrameEnd(0);
+	if (mC3DInterface != NULL)
+		mC3DInterface->SceneEnded();
 
 	mViewDirty = false;
 	mInRedraw = false;

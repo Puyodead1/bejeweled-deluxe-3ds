@@ -5,9 +5,28 @@ libctru + citro3d), ported from the [Bejeweled Deluxe decomp](https://github.com
 of the Switch port (`bejeweled-deluxe-nx`), whose history this repository continues. The plan is `3DS_PORT.md` in the
 decomp repository.
 
-**Status: phases 2–3 (software bring-up).** `bejeweled.3dsx` builds and runs in Azahar: title screen, loading,
-a game played by touch, with NDSP audio running (not yet checked by ear). The software renderer is the only renderer so far and draws at about 4–6
-fps in Azahar (140–180 ms per frame); the citro3d renderer (phase 5) is what fixes that.
+**Status: phase 5 (GPU renderer).** `bejeweled.3dsx` builds and runs in Azahar: title screen, loading, a game
+played by touch, with NDSP audio running (not yet checked by ear). The screen is drawn by the GPU with citro3d:
+about 1–1.5 ms of drawing and 0.5 ms of presenting per frame in Azahar, so the frame rate is whatever the game
+redraws (25 fps on the title screen, 50–60 in play). The phase 3 software renderer is still there for comparison
+and draws at about 5 fps (140–190 ms per frame). Not yet tried on a console.
+
+## Renderers
+
+The game draws into a 640x480 screen image, the way it drew into a DirectDraw surface on Windows, in one of two
+ways:
+
+- **GPU (default).** `C3DInterface`, the 3DS counterpart of the 1.87 `D3DInterface`: every image the game draws to
+  the screen gets textures (power-of-two pieces up to 1024x1024; RGB565 for images without alpha, RGBA4 when the game
+  asks for it, otherwise RGBA8), and blits, stretches, rotations, fills, lines and polygons become batched,
+  CPU-clipped triangles drawn into a 1024x512 render target that keeps its pixels between frames, so only dirty
+  widgets are redrawn.
+- **Software.** The framework's own blitters draw into a plain ARGB image, which the GPU's DMA engine copies into a
+  texture each frame. Chosen by creating the file `sdmc:/3ds/Bejeweled/software-renderer` (any contents).
+
+Either way the result is drawn on both screens (see the controls). The `perf:` lines in
+`sdmc:/3ds/Bejeweled/bejeweled.log`, every 10 s, give the frame rate and draw/present times, the GPU renderer's
+draw calls, vertices, texture uploads and texture memory, and how often the game found something to redraw.
 
 ## Controls
 

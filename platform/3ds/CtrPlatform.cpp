@@ -9,11 +9,11 @@
 #include <unistd.h>
 #include <vector>
 
-// The linear heap (memory the GPU, DSP and DMA can reach) only needs the frame buffers, the frame textures and the
-// audio buffers; libctru's default gives it half the application's memory. Everything else is the regular heap,
-// where the game keeps its decoded images.
+// The linear heap (memory the GPU, DSP and DMA can reach) holds the frame buffers, the render target, every drawn
+// image's texture (C3DInterface) and the audio buffers. Everything else is the regular heap, where the game keeps its
+// decoded images' bits.
 extern "C" u32 __ctru_linear_heap_size;
-u32 __ctru_linear_heap_size = 12 * 1024 * 1024;
+u32 __ctru_linear_heap_size = 24 * 1024 * 1024;
 
 // The main thread's stack. libctru's default is 32 KB, which the framework overflows at once (WStringToString alone
 // puts 16 KB on the stack, and font and resource parsing nest deeply); the PC and Switch builds had a megabyte or more.

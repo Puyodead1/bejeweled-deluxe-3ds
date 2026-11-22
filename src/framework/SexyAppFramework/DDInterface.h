@@ -14,13 +14,19 @@ class SexyAppBase;
 class DDImage;
 class Image;
 class MemoryImage;
+class C3DInterface;
 struct CtrVideo;
 
 typedef std::set<DDImage*> DDImageSet;
 
-// 3DS port of the DirectDraw display. The game draws into mScreenImage, a plain 32-bit ARGB MemoryImage at the
-// game's resolution (640x480) whose pixels live in linear memory. Redraw() has the GPU's DMA engine copy it into a
-// texture (tiling it on the way) and draws that on both screens with citro3d:
+// 3DS port of the DirectDraw display. The game draws into mScreenImage, at the game's resolution (640x480), in one of
+// two ways:
+//   3D (mIs3D, the default): DDImage sends the screen image's drawing to mC3DInterface, which draws it with the GPU
+//     into a render target texture;
+//   software (mIs3D false; the file sdmc:/3ds/Bejeweled/software-renderer, or Set3DAcclerated(false)): the screen
+//     image is a plain 32-bit ARGB MemoryImage whose pixels live in linear memory, and Redraw() has the GPU's DMA
+//     engine copy it into a texture (tiling it on the way).
+// Either way Redraw() draws that texture on both screens with citro3d:
 //   bottom screen (320x240, the touch screen): the whole picture at half size, so a touch at (x, y) is game pixel
 //     (2x, 2y);
 //   top screen (400x240): the same picture, pillarboxed, or with SetMagnifier(true) a 400x240 window at full size
@@ -44,7 +50,7 @@ public:
 	};
 
 	SexyAppBase*			mApp;
-	bool					mIs3D;		// always false: everything is drawn by the software renderer
+	bool					mIs3D;		// the screen is drawn by the GPU (mC3DInterface)
 
 	CritSect				mCritSect;
 	bool					mInRedraw;
@@ -76,12 +82,15 @@ public:
 	bool					mViewDirty;
 
 	CtrVideo*				mVideo;		// citro3d state, kept out of this header (see DDInterface.cpp)
-	uint32_t*				mLinearBits;	// the screen image's pixels, in linear memory for the DMA engine
+	uint32_t*				mLinearBits;	// software: the screen image's pixels, in linear memory for the DMA engine
+	C3DInterface*			mC3DInterface;	// 3D: the GPU renderer
+	bool					mShuttingDown;
 
 public:
 	void					AddDDImage(DDImage* theDDImage);
 	void					RemoveDDImage(DDImage* theDDImage);
 	void					Remove3DData(MemoryImage* theImage);
+	bool					RecoverBits(MemoryImage* theImage);
 
 	void					Cleanup();
 	void					UpdatePresentationRect();

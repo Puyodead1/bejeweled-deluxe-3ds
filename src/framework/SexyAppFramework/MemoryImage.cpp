@@ -1310,6 +1310,10 @@ uint32_t* MemoryImage::GetBits()
 				*(aDestPtr++) = (r << 16) | (g << 8) | (b) | (anAlpha << 24);
 			}
 		}
+		else if (mD3DData != NULL && gSexyAppBase->mDDInterface != NULL && gSexyAppBase->mDDInterface->RecoverBits(this))
+		{
+			// 3DS: the bits were purged once the GPU texture had them; read them back from it.
+		}
 		else
 		{
 			ZeroMemory(mBits, aSize*sizeof(uint32_t));

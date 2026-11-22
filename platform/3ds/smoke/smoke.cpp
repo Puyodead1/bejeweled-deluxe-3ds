@@ -15,6 +15,7 @@
 #include <citro3d.h>
 
 #include <dirent.h>
+#include <malloc.h>
 #include <math.h>
 #include <setjmp.h>
 #include <stdarg.h>
@@ -61,6 +62,16 @@ void Log(const char* theFormat, ...)
 uint64_t TicksToUs(uint64_t theTicks)
 {
 	return theTicks * 1000000ULL / SYSCLOCK_ARM11;
+}
+
+// Heap in use (malloc) and what's left of the linear heap (textures, audio buffers, vertices). The kernel's
+// "region used" counter isn't useful here: in Azahar it exceeds the region size.
+std::string MemoryString()
+{
+	struct mallinfo anInfo = mallinfo();
+	char aBuffer[96];
+	snprintf(aBuffer, sizeof(aBuffer), "heap in use %u KB, linear free %lu KB", (unsigned)anInfo.uordblks / 1024, linearSpaceFree() / 1024);
+	return aBuffer;
 }
 
 // --- Images ------------------------------------------------------------------------------------------------
@@ -171,8 +182,9 @@ uint32_t NextPow2(uint32_t theValue)
 }
 
 // Offset of texel (x, y) in a PICA200 texture of the given width: 8x8 tiles stored row by row, Morton (Z) order
-// inside a tile. Texture memory row 0 is t = 0, and the renderer puts image row 0 there, so a texture coordinate
-// is simply (x / width, y / height) with y pointing down the image.
+// inside a tile. Texture memory row 0 is the *top* of the texture (t = 1), so MakeTexture stores image row y at
+// texture row height-1-y: then t = 0 is image row 0 and a texture coordinate is simply (x / width, y / height),
+// with y pointing down the image. (Checked in Azahar: storing row y at row y showed every image upside down.)
 inline uint32_t TexelOffset(uint32_t x, uint32_t y, uint32_t theWidth)
 {
 	uint32_t aMorton = (x & 1) | ((y & 1) << 1) | ((x & 2) << 1) | ((y & 2) << 2) | ((x & 4) << 2) | ((y & 4) << 3);
@@ -211,7 +223,7 @@ bool MakeTexture(Texture& theTexture, const Pixmap& thePixmap)
 		for (int x = 0; x < thePixmap.mWidth; x++)
 		{
 			uint32_t aPixel = *aSrc++;
-			aDest[TexelOffset(x, y, aTexWidth)] = (aPixel << 8) | (aPixel >> 24);
+			aDest[TexelOffset(x, aTexHeight - 1 - y, aTexWidth)] = (aPixel << 8) | (aPixel >> 24);
 		}
 	}
 	C3D_TexFlush(&theTexture.mTex);
@@ -583,8 +595,7 @@ int main(int argc, char** argv)
 	bool isNew3DS = false;
 	APT_CheckNew3DS(&isNew3DS);
 	Log("smoke: Bejeweled 3DS port, phase 1 smoke test (%s)", isNew3DS ? "New 3DS" : "Old 3DS");
-	Log("memory: application %lu KB, free %lu KB, linear free %lu KB", osGetMemRegionSize(MEMREGION_APPLICATION) / 1024,
-		osGetMemRegionFree(MEMREGION_APPLICATION) / 1024, linearSpaceFree() / 1024);
+	Log("memory: application region %lu KB; %s", osGetMemRegionSize(MEMREGION_APPLICATION) / 1024, MemoryString().c_str());
 
 	LogRomFS();
 
@@ -610,7 +621,7 @@ int main(int argc, char** argv)
 	InitRenderer();
 
 	// Pixel coordinates with y pointing down. In the frame target pixel row 0 is clip y = -1, which the GPU stores
-	// at memory row 0, i.e. texture t = 0: the same convention as the textures we upload.
+	// at the last memory row, i.e. texture t = 0: the same convention as the textures we upload.
 	C3D_Mtx aFrameProj, aTopProj, aBottomProj;
 	Mtx_Ortho(&aFrameProj, 0.0f, TARGET_WIDTH, 0.0f, TARGET_HEIGHT, 1.0f, -1.0f, true);
 	Mtx_OrthoTilt(&aTopProj, 0.0f, 400.0f, 240.0f, 0.0f, 1.0f, -1.0f, true);
@@ -632,7 +643,7 @@ int main(int argc, char** argv)
 		MakeTexture(aGems, aPixmap);
 	}
 	aPixmap = Pixmap();
-	Log("memory: after images, free %lu KB, linear free %lu KB", osGetMemRegionFree(MEMREGION_APPLICATION) / 1024, linearSpaceFree() / 1024);
+	Log("memory: after images, %s", MemoryString().c_str());
 
 	// Audio
 	Result aResult = ndspInit();
@@ -795,9 +806,9 @@ int main(int argc, char** argv)
 		{
 			double aSeconds = aPeriodUs / 1e6;
 			double aMusicMsPerSec = gMusicDecodedFrames > 0 ? TicksToUs(gMusicDecodeTicks) / 1000.0 / (gMusicDecodedFrames / (double)MUSIC_RATE) : 0.0;
-			Log("perf: %.1f fps, cpu %.2f ms, gpu %.2f ms per frame; music decode %.1f ms per s of audio, %d underruns; free %lu KB, linear %lu KB",
+			Log("perf: %.1f fps, cpu %.2f ms, gpu %.2f ms per frame; music decode %.1f ms per s of audio, %d underruns; %s",
 				aFramesThisPeriod / aSeconds, aCpuMs / aFramesThisPeriod, aGpuMs / aFramesThisPeriod, aMusicMsPerSec, gMusicUnderruns,
-				osGetMemRegionFree(MEMREGION_APPLICATION) / 1024, linearSpaceFree() / 1024);
+				MemoryString().c_str());
 			aFramesThisPeriod = 0;
 			aCpuMs = aGpuMs = 0.0f;
 			gMusicDecodeTicks = 0;
